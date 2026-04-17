@@ -48,11 +48,7 @@ impl PartFilter {
 /// Parts whose names do not end in `.xml` or `.rels` are skipped silently: we
 /// assume binary parts (images, bins, ole objects) are uninteresting for XPath
 /// querying.
-pub fn process_parts<F>(
-    path: &Path,
-    filter: &PartFilter,
-    mut on_part: F,
-) -> Result<(), SkipReason>
+pub fn process_parts<F>(path: &Path, filter: &PartFilter, mut on_part: F) -> Result<(), SkipReason>
 where
     F: FnMut(&str, &[u8]),
 {

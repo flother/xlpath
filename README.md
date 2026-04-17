@@ -85,6 +85,7 @@ Options
 | `--with-path`             | Append an XPath-like location to each match.                                                                        |
 | `--tag`                   | Render element matches as a self-closing opening tag (e.g. `<c:lineChart val="1"/>`) instead of their text content. |
 | `--tag-only`              | Print only the match value on each line, with no `file:part:` prefix. Requires `--tag`.                             |
+| `-L`, `--follow`          | Follow symbolic links when walking directories. Off by default.                                                     |
 | `-j <N>`, `--threads <N>` | Worker threads (defaults to logical CPUs). `-j 1` forces deterministic output order.                                |
 
 `--count` and `--files-only` are mutually exclusive. `--tag` only changes how element matches

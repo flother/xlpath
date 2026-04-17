@@ -23,6 +23,10 @@ pub struct Cli {
     #[arg(value_name = "PATH")]
     pub paths: Vec<PathBuf>,
 
+    /// Follow symbolic links when walking directories. Off by default.
+    #[arg(short = 'L', long = "follow")]
+    pub follow: bool,
+
     /// Only consider XML parts matching this glob. Repeatable. Globs apply to
     /// the zip-internal path (e.g. `xl/charts/*.xml`).
     #[arg(long = "include", value_name = "GLOB", action = ArgAction::Append)]

@@ -65,7 +65,7 @@ fn run() -> Result<ExitCode> {
         std::mem::take(&mut cli.paths)
     };
     let stdin = io::stdin();
-    let paths = walk::collect(&inputs, BufReader::new(stdin.lock()))
+    let paths = walk::collect(&inputs, BufReader::new(stdin.lock()), cli.follow)
         .context("failed to resolve input paths")?;
 
     // Explicit thread count if given, otherwise rayon's default (logical CPUs).

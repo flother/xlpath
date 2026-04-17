@@ -12,12 +12,13 @@ use walkdir::WalkDir;
 pub const OOXML_EXTENSIONS: &[&str] = &["xlsx", "xlsm", "xltx", "xltm"];
 
 /// Resolve positional path arguments into a concrete list of spreadsheet files.
-/// Directories are walked recursively (following symlinks). A single `-` entry
-/// means "read newline-separated paths from `stdin`".
+/// Directories are walked recursively but symbolic links are not followed
+/// unless `follow` is true. A single `-` entry means "read newline-separated
+/// paths from `stdin`".
 ///
 /// Each resolved path is kept as-is — no canonicalisation — so the output the
 /// user sees refers to the path they asked about.
-pub fn collect<R: BufRead>(paths: &[PathBuf], stdin: R) -> io::Result<Vec<PathBuf>> {
+pub fn collect<R: BufRead>(paths: &[PathBuf], stdin: R, follow: bool) -> io::Result<Vec<PathBuf>> {
     let mut out = Vec::new();
     let mut stdin = Some(stdin);
 
@@ -33,20 +34,20 @@ pub fn collect<R: BufRead>(paths: &[PathBuf], stdin: R) -> io::Result<Vec<PathBu
                     if trimmed.is_empty() {
                         continue;
                     }
-                    push_from_input(&PathBuf::from(trimmed), &mut out);
+                    push_from_input(&PathBuf::from(trimmed), follow, &mut out);
                 }
             }
         } else {
-            push_from_input(p, &mut out);
+            push_from_input(p, follow, &mut out);
         }
     }
 
     Ok(out)
 }
 
-fn push_from_input(input: &Path, out: &mut Vec<PathBuf>) {
+fn push_from_input(input: &Path, follow: bool, out: &mut Vec<PathBuf>) {
     if input.is_dir() {
-        for entry in WalkDir::new(input).follow_links(true) {
+        for entry in WalkDir::new(input).follow_links(follow) {
             let Ok(entry) = entry else { continue };
             if !entry.file_type().is_file() {
                 continue;
@@ -110,7 +111,7 @@ mod tests {
         let path = dir.path().join("book.xlsx");
         touch(&path);
 
-        let result = collect(std::slice::from_ref(&path), empty_stdin()).unwrap();
+        let result = collect(std::slice::from_ref(&path), empty_stdin(), false).unwrap();
 
         assert_eq!(result, vec![path]);
     }
@@ -129,7 +130,7 @@ mod tests {
             touch(p);
         }
 
-        let result = collect(&[dir.path().to_path_buf()], empty_stdin()).unwrap();
+        let result = collect(&[dir.path().to_path_buf()], empty_stdin(), false).unwrap();
 
         assert_eq!(sorted(result), sorted(vec![a, b, c, d]));
     }
@@ -142,7 +143,7 @@ mod tests {
         touch(&real);
         touch(&lock);
 
-        let result = collect(&[dir.path().to_path_buf()], empty_stdin()).unwrap();
+        let result = collect(&[dir.path().to_path_buf()], empty_stdin(), false).unwrap();
 
         assert_eq!(result, vec![real]);
     }
@@ -157,7 +158,7 @@ mod tests {
         touch(&lock);
         touch(&odd);
 
-        let result = collect(&[lock.clone(), odd.clone()], empty_stdin()).unwrap();
+        let result = collect(&[lock.clone(), odd.clone()], empty_stdin(), false).unwrap();
 
         assert_eq!(result, vec![lock, odd]);
     }
@@ -170,7 +171,7 @@ mod tests {
         touch(&upper);
         touch(&mixed);
 
-        let result = collect(&[dir.path().to_path_buf()], empty_stdin()).unwrap();
+        let result = collect(&[dir.path().to_path_buf()], empty_stdin(), false).unwrap();
 
         assert_eq!(sorted(result), sorted(vec![upper, mixed]));
     }
@@ -190,7 +191,7 @@ mod tests {
         writeln!(buf).unwrap();
         let stdin = io::Cursor::new(buf);
 
-        let result = collect(&[PathBuf::from("-")], stdin).unwrap();
+        let result = collect(&[PathBuf::from("-")], stdin, false).unwrap();
 
         assert_eq!(result, vec![a, b]);
     }
@@ -214,8 +215,40 @@ mod tests {
             dir.path().join("subdir"),
             PathBuf::from("-"),
         ];
-        let result = collect(&args, stdin).unwrap();
+        let result = collect(&args, stdin, false).unwrap();
 
         assert_eq!(sorted(result), sorted(vec![explicit, in_dir, from_stdin]));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn does_not_follow_symlinked_directory_by_default() {
+        let dir = TempDir::new().unwrap();
+        let real = dir.path().join("real");
+        let root = dir.path().join("root");
+        fs::create_dir_all(&real).unwrap();
+        fs::create_dir_all(&root).unwrap();
+        touch(&real.join("a.xlsx"));
+        std::os::unix::fs::symlink(&real, root.join("link")).unwrap();
+
+        let result = collect(std::slice::from_ref(&root), empty_stdin(), false).unwrap();
+
+        assert!(result.is_empty(), "expected no files, got {result:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn follows_symlinked_directory_when_requested() {
+        let dir = TempDir::new().unwrap();
+        let real = dir.path().join("real");
+        let root = dir.path().join("root");
+        fs::create_dir_all(&real).unwrap();
+        fs::create_dir_all(&root).unwrap();
+        touch(&real.join("a.xlsx"));
+        std::os::unix::fs::symlink(&real, root.join("link")).unwrap();
+
+        let result = collect(std::slice::from_ref(&root), empty_stdin(), true).unwrap();
+
+        assert_eq!(result, vec![root.join("link").join("a.xlsx")]);
     }
 }
