@@ -43,7 +43,7 @@ pub struct Cli {
     pub default_ns: Option<String>,
 
     /// Only print a count of matches per file.
-    #[arg(long, conflicts_with = "files_only")]
+    #[arg(short = 'c', long, conflicts_with = "files_only")]
     pub count: bool,
 
     /// Only print the paths of files containing at least one match.

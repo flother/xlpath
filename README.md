@@ -80,7 +80,7 @@ Options
 | `--exclude <GLOB>`        | Skip matching zip-internal paths. Repeatable.                                                                       |
 | `--ns <PREFIX=URI>`       | Register (or override) a namespace prefix. Repeatable.                                                              |
 | `--default-ns <PREFIX>`   | Bind the document's default `xmlns` to this prefix.                                                                 |
-| `--count`                 | Print `file:N` per matching workbook instead of each match.                                                         |
+| `-c`, `--count`           | Print `file:N` per matching workbook instead of each match.                                                         |
 | `--files-only`            | Print only the names of workbooks with at least one match.                                                          |
 | `--with-path`             | Append an XPath-like location to each match.                                                                        |
 | `--tag`                   | Render element matches as a self-closing opening tag (e.g. `<c:lineChart val="1"/>`) instead of their text content. |
