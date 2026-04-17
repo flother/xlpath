@@ -72,6 +72,9 @@ xlpath '//@r:id' *.xlsx --count
 
 # Just the filenames of workbooks that define any named ranges.
 find . -name '*.xlsx' | xlpath '//x:definedName' - --only-filenames
+
+# Output results as newline-delimited JSON
+xlpath '//x:sheet/@name' workbook.xlsx --json
 ```
 
 Options
@@ -88,12 +91,13 @@ Options
 | `--tag`                   | Add the matching element's synthetic self-closing tag to the output prefix (e.g. `<x:sheet name="A" sheetId="1"/>`). For element matches, the tag is the element itself; for attribute and text matches, it is the parent element. |
 | `--no-filename`           | Omit the filename from each output line.                                                                                                                                                                                           |
 | `--no-part`               | Omit the zip-internal part path from each output line.                                                                                                                                                                             |
+| `--json`                  | Output one newline-delimited JSON object per match (see [JSON output](#json-output)).                                                                                                                                              |
 | `-L`, `--follow`          | Follow symbolic links when walking directories. Off by default.                                                                                                                                                                    |
 | `-j <N>`, `--threads <N>` | Worker threads (defaults to logical CPUs). `-j 1` forces deterministic output order.                                                                                                                                               |
 
-`--count` and `--only-filenames` are mutually exclusive. `--tag`, `--no-filename`, and `--no-part`
-conflict with `--count` and `--only-filenames` (which emit one line per file rather than one per
-match).
+`--count`, `--only-filenames`, and `--json` are mutually exclusive. `--tag`, `--no-filename`, and
+`--no-part` conflict with `--count` and `--only-filenames` (which emit one line per file rather than
+one per match), but are compatible with `--json`.
 
 The synthetic tag emitted by `--tag` is a reporting artefact, not a round-trippable XML fragment: it
 is always self-closing, carries no `xmlns` declarations, and uses the canonical prefix from `xlpath`

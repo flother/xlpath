@@ -24,6 +24,7 @@ pub fn format_file(
         OutputMode::Minimal => format_minimal(no_filename, no_path, path, parts),
         OutputMode::Count => format_count(path, parts),
         OutputMode::OnlyFilenames => format_only_filenames(path, parts),
+        OutputMode::Json => format_json(no_filename, no_path, path, parts),
     }
 }
 
@@ -71,6 +72,65 @@ fn format_only_filenames(path: &Path, parts: &[PartMatches]) -> String {
         format!("{}\n", path.display())
     } else {
         String::new()
+    }
+}
+
+fn format_json(no_filename: bool, no_path: bool, path: &Path, parts: &[PartMatches]) -> String {
+    let mut out = String::new();
+    let file = path.display().to_string();
+    for (part, matches) in parts {
+        for m in matches {
+            out.push('{');
+            let mut comma = false;
+            if !no_filename {
+                out.push_str("\"file\":\"");
+                json_escape_into(&mut out, &file);
+                out.push('"');
+                comma = true;
+            }
+            if !no_path {
+                if comma {
+                    out.push(',');
+                }
+                out.push_str("\"part\":\"");
+                json_escape_into(&mut out, part);
+                out.push('"');
+                comma = true;
+            }
+            if let Some(tag) = &m.tag {
+                if comma {
+                    out.push(',');
+                }
+                out.push_str("\"tag\":\"");
+                json_escape_into(&mut out, tag);
+                out.push('"');
+                comma = true;
+            }
+            if comma {
+                out.push(',');
+            }
+            out.push_str("\"value\":\"");
+            json_escape_into(&mut out, &m.value);
+            out.push_str("\"}\n");
+        }
+    }
+    out
+}
+
+/// Appends `s` to `buf` with JSON string escaping applied (no surrounding quotes).
+fn json_escape_into(buf: &mut String, s: &str) {
+    for c in s.chars() {
+        match c {
+            '"' => buf.push_str("\\\""),
+            '\\' => buf.push_str("\\\\"),
+            '\n' => buf.push_str("\\n"),
+            '\r' => buf.push_str("\\r"),
+            '\t' => buf.push_str("\\t"),
+            c if (c as u32) < 0x20 => {
+                buf.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => buf.push(c),
+        }
     }
 }
 
@@ -289,5 +349,119 @@ mod tests {
         let out = format_file(OutputMode::OnlyFilenames, false, false, &path, &parts);
 
         assert!(out.is_empty());
+    }
+
+    #[test]
+    fn json_mode_emits_one_object_per_match() {
+        let path = PathBuf::from("book.xlsx");
+        let parts = vec![(
+            "xl/workbook.xml".to_string(),
+            vec![m(MatchKind::Attribute, "Sheet1"), m(MatchKind::Attribute, "Sheet2")],
+        )];
+
+        let out = format_file(OutputMode::Json, false, false, &path, &parts);
+
+        assert_eq!(
+            out,
+            "{\"file\":\"book.xlsx\",\"part\":\"xl/workbook.xml\",\"value\":\"Sheet1\"}\n\
+             {\"file\":\"book.xlsx\",\"part\":\"xl/workbook.xml\",\"value\":\"Sheet2\"}\n"
+        );
+    }
+
+    #[test]
+    fn json_mode_no_filename() {
+        let path = PathBuf::from("book.xlsx");
+        let parts = vec![(
+            "xl/workbook.xml".to_string(),
+            vec![m(MatchKind::Attribute, "Sheet1")],
+        )];
+
+        let out = format_file(OutputMode::Json, true, false, &path, &parts);
+
+        assert_eq!(out, "{\"part\":\"xl/workbook.xml\",\"value\":\"Sheet1\"}\n");
+    }
+
+    #[test]
+    fn json_mode_no_part() {
+        let path = PathBuf::from("book.xlsx");
+        let parts = vec![(
+            "xl/workbook.xml".to_string(),
+            vec![m(MatchKind::Attribute, "Sheet1")],
+        )];
+
+        let out = format_file(OutputMode::Json, false, true, &path, &parts);
+
+        assert_eq!(out, "{\"file\":\"book.xlsx\",\"value\":\"Sheet1\"}\n");
+    }
+
+    #[test]
+    fn json_mode_no_filename_no_part() {
+        let path = PathBuf::from("book.xlsx");
+        let parts = vec![(
+            "xl/workbook.xml".to_string(),
+            vec![m(MatchKind::Element, "Alpha")],
+        )];
+
+        let out = format_file(OutputMode::Json, true, true, &path, &parts);
+
+        assert_eq!(out, "{\"value\":\"Alpha\"}\n");
+    }
+
+    #[test]
+    fn json_mode_with_tag() {
+        let path = PathBuf::from("book.xlsx");
+        let parts = vec![(
+            "xl/charts/chart1.xml".to_string(),
+            vec![m_tag(MatchKind::Element, "bar", "<c:barChart/>")],
+        )];
+
+        let out = format_file(OutputMode::Json, false, false, &path, &parts);
+
+        assert_eq!(
+            out,
+            "{\"file\":\"book.xlsx\",\"part\":\"xl/charts/chart1.xml\",\"tag\":\"<c:barChart/>\",\"value\":\"bar\"}\n"
+        );
+    }
+
+    #[test]
+    fn json_mode_is_silent_without_matches() {
+        let path = PathBuf::from("book.xlsx");
+        let parts: Vec<super::PartMatches> = Vec::new();
+
+        let out = format_file(OutputMode::Json, false, false, &path, &parts);
+
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn json_mode_escapes_control_characters_via_unicode_escape() {
+        let path = PathBuf::from("book.xlsx");
+        let parts = vec![(
+            "xl/workbook.xml".to_string(),
+            vec![m(MatchKind::Text, "a\x00b\x0cc")],
+        )];
+
+        let out = format_file(OutputMode::Json, false, false, &path, &parts);
+
+        assert_eq!(
+            out,
+            "{\"file\":\"book.xlsx\",\"part\":\"xl/workbook.xml\",\"value\":\"a\\u0000b\\u000cc\"}\n"
+        );
+    }
+
+    #[test]
+    fn json_mode_escapes_special_characters() {
+        let path = PathBuf::from("book.xlsx");
+        let parts = vec![(
+            "xl/workbook.xml".to_string(),
+            vec![m(MatchKind::Text, "line1\nline2\t\"quoted\"\\back")],
+        )];
+
+        let out = format_file(OutputMode::Json, false, false, &path, &parts);
+
+        assert_eq!(
+            out,
+            "{\"file\":\"book.xlsx\",\"part\":\"xl/workbook.xml\",\"value\":\"line1\\nline2\\t\\\"quoted\\\"\\\\back\"}\n"
+        );
     }
 }

@@ -305,6 +305,62 @@ fn no_filename_no_part_with_tag_shows_parent_element_then_value() {
 }
 
 #[test]
+fn json_mode_outputs_one_ndjson_object_per_match() {
+    let tmp = TempDir::new().unwrap();
+    let wb = tmp.path().join("book.xlsx");
+    write_workbook(&wb, &[("xl/workbook.xml", SIMPLE_WORKBOOK_XML.as_bytes())]);
+
+    let out = xlpath()
+        .args(["//x:sheet/@name", "--json"])
+        .arg(&wb)
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines.len(), 2, "expected one line per match; got:\n{stdout}");
+    assert!(
+        lines[0].contains(r#""part":"xl/workbook.xml""#),
+        "stdout was: {stdout}"
+    );
+    assert!(
+        lines[0].contains(r#""value":"Alpha""#),
+        "stdout was: {stdout}"
+    );
+    assert!(
+        lines[1].contains(r#""value":"Beta""#),
+        "stdout was: {stdout}"
+    );
+}
+
+#[test]
+fn json_conflicts_with_count() {
+    let tmp = TempDir::new().unwrap();
+    let wb = tmp.path().join("book.xlsx");
+    write_workbook(&wb, &[("xl/workbook.xml", SIMPLE_WORKBOOK_XML.as_bytes())]);
+
+    xlpath()
+        .args(["//x:sheet/@name", "--json", "--count"])
+        .arg(&wb)
+        .assert()
+        .failure();
+}
+
+#[test]
+fn json_conflicts_with_only_filenames() {
+    let tmp = TempDir::new().unwrap();
+    let wb = tmp.path().join("book.xlsx");
+    write_workbook(&wb, &[("xl/workbook.xml", SIMPLE_WORKBOOK_XML.as_bytes())]);
+
+    xlpath()
+        .args(["//x:sheet/@name", "--json", "--only-filenames"])
+        .arg(&wb)
+        .assert()
+        .failure();
+}
+
+#[test]
 fn long_help_lists_preregistered_ooxml_namespaces() {
     // A representative sample of the OOXML defaults — every prefix in this list
     // must appear with its URI in `--help`, so that users can discover the

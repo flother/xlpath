@@ -47,12 +47,19 @@ pub struct Cli {
     pub default_ns: Option<String>,
 
     /// Only print a count of matches per file.
-    #[arg(short = 'c', long, conflicts_with = "only_filenames")]
+    #[arg(short = 'c', long, conflicts_with_all = ["only_filenames", "json"])]
     pub count: bool,
 
     /// Only print the paths of files containing at least one match.
-    #[arg(long = "only-filenames", conflicts_with = "count")]
+    #[arg(long = "only-filenames", conflicts_with_all = ["count", "json"])]
     pub only_filenames: bool,
+
+    /// Output matches as newline-delimited JSON (one object per match).
+    ///
+    /// Each object can have `file`, `part`, `tag`, and `value` string fields,
+    /// as controlled by flags (`--no-filename`, `--no-part`, `--tag`).
+    #[arg(long = "json", conflicts_with_all = ["count", "only_filenames"])]
+    pub json: bool,
 
     /// Render each element match as a synthetic self-closing opening tag (e.g.
     /// `<c:lineChart val="1"/>`) in the output prefix, alongside its text
@@ -92,6 +99,8 @@ pub enum OutputMode {
     Count,
     /// `--only-filenames`: one line per matching file, `file`.
     OnlyFilenames,
+    /// `--json`: one JSON object per match, newline-delimited.
+    Json,
 }
 
 impl Cli {
@@ -100,6 +109,8 @@ impl Cli {
             OutputMode::Count
         } else if self.only_filenames {
             OutputMode::OnlyFilenames
+        } else if self.json {
+            OutputMode::Json
         } else {
             OutputMode::Minimal
         }
