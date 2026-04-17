@@ -44,6 +44,12 @@ compound documents) are skipped with a warning on `stderr`.
 # All sheet names in a workbook, with each match annotated by its XPath location.
 xlpath '//x:sheet/@name' workbook.xlsx --with-path
 
+# Name of every theme used in a folder of workbooks.
+xlpath '//a:themeElements/a:clrScheme/@name' --include 'xl/theme/*.xml' .
+
+# Colours set in the theme.
+xlpath '//a:themeElements/a:clrScheme/*/*/@val' --include 'xl/theme/*.xml' workbook.xlsx
+
 # Every chart type used across a folder of workbooks.
 xlpath '//c:plotArea/*' . --include 'xl/charts/*.xml' --tag --tag-only \
   | sort | uniq -c
