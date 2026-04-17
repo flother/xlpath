@@ -44,6 +44,9 @@ compound documents) are skipped with a warning on `stderr`.
 # All sheet names in a workbook, with each match annotated by its XPath location.
 xlpath '//x:sheet/@name' workbook.xlsx --with-path
 
+# All formulas in a workbook's sheets.
+xlpath '/x:worksheet/x:sheetData//x:c/x:f[text()]' --include 'xl/worksheets/sheet*.xml' workbook.xml
+
 # Name of every theme used in a folder of workbooks.
 xlpath '//a:themeElements/a:clrScheme/@name' --include 'xl/theme/*.xml' .
 
