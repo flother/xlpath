@@ -15,33 +15,42 @@ pub type PartMatches = (String, Vec<Match>);
 /// execution).
 pub fn format_file(
     mode: OutputMode,
-    with_path: bool,
+    no_filename: bool,
+    no_path: bool,
     path: &Path,
     parts: &[PartMatches],
 ) -> String {
     match mode {
-        OutputMode::Minimal => format_minimal(with_path, path, parts),
+        OutputMode::Minimal => format_minimal(no_filename, no_path, path, parts),
         OutputMode::Count => format_count(path, parts),
-        OutputMode::FilesOnly => format_files_only(path, parts),
-        OutputMode::TagOnly => format_tag_only(parts),
+        OutputMode::OnlyFilenames => format_only_filenames(path, parts),
     }
 }
 
-fn format_minimal(with_path: bool, path: &Path, parts: &[PartMatches]) -> String {
+fn format_minimal(no_filename: bool, no_path: bool, path: &Path, parts: &[PartMatches]) -> String {
     let mut out = String::new();
     for (part, matches) in parts {
         for m in matches {
-            out.push_str(&path.display().to_string());
-            out.push(':');
-            out.push_str(part);
-            if with_path {
-                if let Some(loc) = &m.location {
-                    out.push(':');
-                    out.push_str(loc);
-                }
+            let mut prefix = String::new();
+            if !no_filename {
+                prefix.push_str(&path.display().to_string());
+                prefix.push(':');
             }
-            out.push_str(": ");
-            out.push_str(&m.value);
+            if !no_path {
+                prefix.push_str(part);
+                prefix.push(':');
+            }
+            if let Some(tag) = &m.tag {
+                prefix.push_str(tag);
+                prefix.push(':');
+            }
+            if prefix.is_empty() {
+                out.push_str(&m.value);
+            } else {
+                out.push_str(&prefix);
+                out.push(' ');
+                out.push_str(&m.value);
+            }
             out.push('\n');
         }
     }
@@ -56,18 +65,7 @@ fn format_count(path: &Path, parts: &[PartMatches]) -> String {
     format!("{}:{}\n", path.display(), total)
 }
 
-fn format_tag_only(parts: &[PartMatches]) -> String {
-    let mut out = String::new();
-    for (_, matches) in parts {
-        for m in matches {
-            out.push_str(&m.value);
-            out.push('\n');
-        }
-    }
-    out
-}
-
-fn format_files_only(path: &Path, parts: &[PartMatches]) -> String {
+fn format_only_filenames(path: &Path, parts: &[PartMatches]) -> String {
     let any = parts.iter().any(|(_, ms)| !ms.is_empty());
     if any {
         format!("{}\n", path.display())
@@ -139,15 +137,15 @@ mod tests {
         Match {
             kind,
             value: value.into(),
-            location: None,
+            tag: None,
         }
     }
 
-    fn m_loc(kind: MatchKind, value: &str, location: &str) -> Match {
+    fn m_tag(kind: MatchKind, value: &str, tag: &str) -> Match {
         Match {
             kind,
             value: value.into(),
-            location: Some(location.into()),
+            tag: Some(tag.into()),
         }
     }
 
@@ -159,7 +157,7 @@ mod tests {
             vec![m(MatchKind::Element, "bar"), m(MatchKind::Element, "line")],
         )];
 
-        let out = format_file(OutputMode::Minimal, false, &path, &parts);
+        let out = format_file(OutputMode::Minimal, false, false, &path, &parts);
 
         assert_eq!(
             out,
@@ -168,23 +166,74 @@ mod tests {
     }
 
     #[test]
-    fn minimal_mode_with_path_includes_the_location_segment() {
+    fn minimal_mode_with_tag_in_prefix() {
         let path = PathBuf::from("book.xlsx");
         let parts = vec![(
-            "xl/workbook.xml".to_string(),
-            vec![m_loc(
-                MatchKind::Attribute,
-                "Alpha",
-                "/x:workbook/x:sheets/x:sheet[1]/@name",
-            )],
+            "xl/charts/chart1.xml".to_string(),
+            vec![
+                m_tag(MatchKind::Element, "bar", "<c:barChart/>"),
+                m_tag(MatchKind::Element, "line", "<c:lineChart/>"),
+            ],
         )];
 
-        let out = format_file(OutputMode::Minimal, true, &path, &parts);
+        let out = format_file(OutputMode::Minimal, false, false, &path, &parts);
 
         assert_eq!(
             out,
-            "book.xlsx:xl/workbook.xml:/x:workbook/x:sheets/x:sheet[1]/@name: Alpha\n"
+            "book.xlsx:xl/charts/chart1.xml:<c:barChart/>: bar\nbook.xlsx:xl/charts/chart1.xml:<c:lineChart/>: line\n"
         );
+    }
+
+    #[test]
+    fn minimal_mode_no_filename() {
+        let path = PathBuf::from("book.xlsx");
+        let parts = vec![(
+            "xl/workbook.xml".to_string(),
+            vec![m(MatchKind::Attribute, "Sheet1")],
+        )];
+
+        let out = format_file(OutputMode::Minimal, true, false, &path, &parts);
+
+        assert_eq!(out, "xl/workbook.xml: Sheet1\n");
+    }
+
+    #[test]
+    fn minimal_mode_no_path() {
+        let path = PathBuf::from("book.xlsx");
+        let parts = vec![(
+            "xl/workbook.xml".to_string(),
+            vec![m(MatchKind::Attribute, "Sheet1")],
+        )];
+
+        let out = format_file(OutputMode::Minimal, false, true, &path, &parts);
+
+        assert_eq!(out, "book.xlsx: Sheet1\n");
+    }
+
+    #[test]
+    fn minimal_mode_no_filename_no_path() {
+        let path = PathBuf::from("book.xlsx");
+        let parts = vec![(
+            "xl/workbook.xml".to_string(),
+            vec![m(MatchKind::Attribute, "Sheet1")],
+        )];
+
+        let out = format_file(OutputMode::Minimal, true, true, &path, &parts);
+
+        assert_eq!(out, "Sheet1\n");
+    }
+
+    #[test]
+    fn minimal_mode_no_filename_no_path_with_tag() {
+        let path = PathBuf::from("book.xlsx");
+        let parts = vec![(
+            "xl/charts/chart1.xml".to_string(),
+            vec![m_tag(MatchKind::Element, "bar", "<c:barChart/>")],
+        )];
+
+        let out = format_file(OutputMode::Minimal, true, true, &path, &parts);
+
+        assert_eq!(out, "<c:barChart/>: bar\n");
     }
 
     #[test]
@@ -201,7 +250,7 @@ mod tests {
             ),
         ];
 
-        let out = format_file(OutputMode::Count, false, &path, &parts);
+        let out = format_file(OutputMode::Count, false, false, &path, &parts);
 
         assert_eq!(out, "book.xlsx:3\n");
     }
@@ -211,13 +260,13 @@ mod tests {
         let path = PathBuf::from("book.xlsx");
         let parts: Vec<super::PartMatches> = Vec::new();
 
-        let out = format_file(OutputMode::Count, false, &path, &parts);
+        let out = format_file(OutputMode::Count, false, false, &path, &parts);
 
         assert!(out.is_empty());
     }
 
     #[test]
-    fn files_only_mode_prints_path_once_when_any_match_exists() {
+    fn only_filenames_mode_prints_path_once_when_any_match_exists() {
         let path = PathBuf::from("book.xlsx");
         let parts = vec![
             (
@@ -227,43 +276,17 @@ mod tests {
             ("xl/charts/chart1.xml".to_string(), Vec::new()),
         ];
 
-        let out = format_file(OutputMode::FilesOnly, false, &path, &parts);
+        let out = format_file(OutputMode::OnlyFilenames, false, false, &path, &parts);
 
         assert_eq!(out, "book.xlsx\n");
     }
 
     #[test]
-    fn tag_only_mode_prints_one_line_per_match_with_no_prefix() {
-        let path = PathBuf::from("book.xlsx");
-        let parts = vec![(
-            "xl/charts/chart1.xml".to_string(),
-            vec![
-                m(MatchKind::Element, "<c:barChart/>"),
-                m(MatchKind::Element, "<c:lineChart/>"),
-            ],
-        )];
-
-        let out = format_file(OutputMode::TagOnly, false, &path, &parts);
-
-        assert_eq!(out, "<c:barChart/>\n<c:lineChart/>\n");
-    }
-
-    #[test]
-    fn tag_only_mode_emits_nothing_without_matches() {
-        let path = PathBuf::from("book.xlsx");
-        let parts: Vec<super::PartMatches> = Vec::new();
-
-        let out = format_file(OutputMode::TagOnly, false, &path, &parts);
-
-        assert!(out.is_empty());
-    }
-
-    #[test]
-    fn files_only_mode_is_silent_without_matches() {
+    fn only_filenames_mode_is_silent_without_matches() {
         let path = PathBuf::from("book.xlsx");
         let parts = vec![("xl/workbook.xml".to_string(), Vec::new())];
 
-        let out = format_file(OutputMode::FilesOnly, false, &path, &parts);
+        let out = format_file(OutputMode::OnlyFilenames, false, false, &path, &parts);
 
         assert!(out.is_empty());
     }

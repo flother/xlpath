@@ -47,34 +47,35 @@ pub struct Cli {
     pub default_ns: Option<String>,
 
     /// Only print a count of matches per file.
-    #[arg(short = 'c', long, conflicts_with = "files_only")]
+    #[arg(short = 'c', long, conflicts_with = "only_filenames")]
     pub count: bool,
 
     /// Only print the paths of files containing at least one match.
-    #[arg(long = "files-only")]
-    pub files_only: bool,
-
-    /// Include an XPath-like location for each match in the output.
-    #[arg(long = "with-path")]
-    pub with_path: bool,
+    #[arg(long = "only-filenames", conflicts_with = "count")]
+    pub only_filenames: bool,
 
     /// Render each element match as a synthetic self-closing opening tag (e.g.
-    /// `<c:lineChart val="1"/>`) instead of its text content. No effect on
-    /// attribute, text, or atomic matches. Ignored under `--count` and
-    /// `--files-only`.
-    #[arg(long = "tag")]
+    /// `<c:lineChart val="1"/>`) in the output prefix, alongside its text
+    /// content. No effect on attribute, text, or atomic matches.
+    #[arg(
+        long = "tag",
+        conflicts_with_all = ["count", "only_filenames"],
+    )]
     pub tag: bool,
 
-    /// Print only the match value on each line — no `file:part:` prefix.
-    /// Requires `--tag` (so element matches render as their synthetic
-    /// self-closing tag). Conflicts with `--count`, `--files-only`, and
-    /// `--with-path`.
+    /// Omit the filename from each output line.
     #[arg(
-        long = "tag-only",
-        requires = "tag",
-        conflicts_with_all = ["count", "files_only", "with_path"],
+        long = "no-filename",
+        conflicts_with_all = ["count", "only_filenames"],
     )]
-    pub tag_only: bool,
+    pub no_filename: bool,
+
+    /// Omit the zip-internal part path from each output line.
+    #[arg(
+        long = "no-part",
+        conflicts_with_all = ["count", "only_filenames"],
+    )]
+    pub no_part: bool,
 
     /// Number of worker threads. Defaults to the number of logical CPUs. Use
     /// `-j 1` for deterministic output order.
@@ -85,27 +86,20 @@ pub struct Cli {
 /// Which output style to use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputMode {
-    /// Default: one line per match, `file:part: value` (plus optional location
-    /// when `--with-path` is set).
+    /// Default: one line per match, `[file:][part:][tag: ]value`.
     Minimal,
     /// `--count`: one line per matching file, `file:N`.
     Count,
-    /// `--files-only`: one line per matching file, `file`.
-    FilesOnly,
-    /// `--tag-only`: one line per match containing just the match value (which,
-    /// with `--tag`, is the synthetic self-closing tag). No file or part
-    /// prefix.
-    TagOnly,
+    /// `--only-filenames`: one line per matching file, `file`.
+    OnlyFilenames,
 }
 
 impl Cli {
     pub fn output_mode(&self) -> OutputMode {
         if self.count {
             OutputMode::Count
-        } else if self.files_only {
-            OutputMode::FilesOnly
-        } else if self.tag_only {
-            OutputMode::TagOnly
+        } else if self.only_filenames {
+            OutputMode::OnlyFilenames
         } else {
             OutputMode::Minimal
         }
@@ -159,5 +153,42 @@ mod tests {
                 "XPATH_LONG_HELP is missing URI `{uri}`"
             );
         }
+    }
+
+    #[test]
+    fn output_mode_only_filenames() {
+        let cli = Cli::try_parse_from(["xlpath", "--only-filenames", "//foo"]).unwrap();
+        assert!(matches!(cli.output_mode(), OutputMode::OnlyFilenames));
+    }
+
+    #[test]
+    fn no_filename_and_no_part_flags_parse() {
+        let cli = Cli::try_parse_from(["xlpath", "--no-filename", "--no-part", "//foo"]).unwrap();
+        assert!(cli.no_filename);
+        assert!(cli.no_part);
+    }
+
+    #[test]
+    fn tag_conflicts_with_count() {
+        let result = Cli::try_parse_from(["xlpath", "--tag", "--count", "//foo"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn tag_conflicts_with_only_filenames() {
+        let result = Cli::try_parse_from(["xlpath", "--tag", "--only-filenames", "//foo"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn no_filename_conflicts_with_count() {
+        let result = Cli::try_parse_from(["xlpath", "--no-filename", "--count", "//foo"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn no_part_conflicts_with_only_filenames() {
+        let result = Cli::try_parse_from(["xlpath", "--no-part", "--only-filenames", "//foo"]);
+        assert!(result.is_err());
     }
 }

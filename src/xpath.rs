@@ -99,9 +99,7 @@ impl Namespaces {
     }
 }
 
-/// How an XPath match presented itself. Informs the final output formatting
-/// (`{file}:{part}: {value}` in every case, with `--with-path` appending a
-/// location string for nodes).
+/// How an XPath match presented itself. Informs the final output formatting.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MatchKind {
     Element,
@@ -112,25 +110,26 @@ pub enum MatchKind {
     Atomic,
 }
 
-/// A single hit from an XPath evaluation. `value` is already stringified in the
-/// form the default output mode wants; `location` is computed only when
-/// requested.
+/// A single hit from an XPath evaluation. `value` holds the text/attribute
+/// content. For element matches with `EvalOptions::as_tag`, `tag` holds the
+/// synthetic self-closing tag for use as a prefix component in output lines.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Match {
     pub kind: MatchKind,
     pub value: String,
-    pub location: Option<String>,
+    /// Synthetic self-closing element tag (e.g. `<c:chart/>`). Populated only
+    /// when `EvalOptions::as_tag` is true and the match is an element node.
+    pub tag: Option<String>,
 }
 
-/// Per-evaluation rendering switches. The defaults match the original minimal
-/// output (element `string_value()`, no location).
+/// Per-evaluation rendering switches. The defaults produce plain text-content
+/// values with no tag.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct EvalOptions {
-    /// When true, each node match records an XPath-like location string.
-    pub with_location: bool,
-    /// When true, element matches are rendered as a synthetic self-closing
-    /// opening tag (e.g. `<c:lineChart val="1"/>`) instead of the element's
-    /// concatenated text content. No effect on other match kinds.
+    /// When true, node matches populate `tag` with a synthetic self-closing
+    /// opening tag. For element matches the tag is the element itself; for
+    /// attribute and text matches it is the parent element. `value` is always
+    /// the text or attribute content. No effect on atomic matches.
     pub as_tag: bool,
 }
 
@@ -189,7 +188,7 @@ impl Query {
     }
 
     /// Parse `xml` and run the compiled query over it, returning one [`Match`]
-    /// per hit. Does not compute locations.
+    /// per hit.
     pub fn evaluate_xml(&self, xml: &str) -> Result<Vec<Match>, QueryError> {
         self.evaluate_xml_with(xml, EvalOptions::default())
     }
@@ -261,116 +260,72 @@ fn collect_matches(
         Value::String(s) => vec![Match {
             kind: MatchKind::Atomic,
             value: s,
-            location: None,
+            tag: None,
         }],
         Value::Number(n) => vec![Match {
             kind: MatchKind::Atomic,
             value: format_number(n),
-            location: None,
+            tag: None,
         }],
         Value::Boolean(b) => vec![Match {
             kind: MatchKind::Atomic,
             value: b.to_string(),
-            location: None,
+            tag: None,
         }],
     }
 }
 
 fn node_to_match(node: Node<'_>, opts: EvalOptions, uri_to_prefix: &[(String, String)]) -> Match {
-    let location = if opts.with_location {
-        Some(node_location(node, uri_to_prefix))
-    } else {
-        None
-    };
     match node {
         Node::Element(e) => Match {
             kind: MatchKind::Element,
-            value: if opts.as_tag {
-                render_opening_tag(e, uri_to_prefix)
+            value: collapse_whitespace(&node.string_value()),
+            tag: if opts.as_tag {
+                Some(render_opening_tag(e, uri_to_prefix))
             } else {
-                collapse_whitespace(&node.string_value())
+                None
             },
-            location,
         },
         Node::Attribute(a) => Match {
             kind: MatchKind::Attribute,
             value: a.value().to_string(),
-            location,
+            tag: if opts.as_tag {
+                // An attribute always has an owner element in well-formed XML.
+                a.parent().map(|e| render_opening_tag(e, uri_to_prefix))
+            } else {
+                None
+            },
         },
         Node::Text(t) => Match {
             kind: MatchKind::Text,
             value: collapse_whitespace(t.text()),
-            location,
+            tag: if opts.as_tag {
+                t.parent().map(|e| render_opening_tag(e, uri_to_prefix))
+            } else {
+                None
+            },
         },
         Node::Comment(c) => Match {
             kind: MatchKind::Text,
             value: collapse_whitespace(c.text()),
-            location,
+            tag: None,
         },
         Node::ProcessingInstruction(p) => Match {
             kind: MatchKind::Text,
             value: p.value().unwrap_or("").to_string(),
-            location,
+            tag: None,
         },
         Node::Namespace(n) => Match {
             kind: MatchKind::Atomic,
             value: n.uri().to_string(),
-            location,
+            tag: None,
         },
         Node::Root(_) => Match {
             kind: MatchKind::Element,
             value: collapse_whitespace(&node.string_value()),
-            location,
+            tag: None,
         },
     }
-}
-
-/// Build an XPath-1.0-style absolute location for a node:
-/// `/x:workbook/x:sheets/x:sheet[2]/@name`. Prefixes come from our namespace
-/// registry; if a URI has no registered prefix the element name is emitted bare
-/// (which won't round-trip but stays readable).
-fn node_location(node: Node<'_>, uri_to_prefix: &[(String, String)]) -> String {
-    // Attributes prepend `/@name` to their owner element's path.
-    if let Node::Attribute(a) = node {
-        let owner = a.parent().expect("attribute must have an owner element");
-        let mut base = element_path(owner, uri_to_prefix);
-        base.push('/');
-        base.push('@');
-        let name = a.name();
-        if let Some(uri) = name.namespace_uri() {
-            if let Some(prefix) = lookup_prefix(uri_to_prefix, uri) {
-                base.push_str(prefix);
-                base.push(':');
-            }
-        }
-        base.push_str(name.local_part());
-        return base;
-    }
-
-    if let Node::Element(e) = node {
-        return element_path(e, uri_to_prefix);
-    }
-
-    // Text / comment / PI — report the containing element's path with a textual
-    // suffix. Not canonical XPath but useful for navigation.
-    if let Node::Text(t) = node {
-        let mut base = match t.parent() {
-            Some(e) => element_path(e, uri_to_prefix),
-            None => String::new(),
-        };
-        base.push_str("/text()");
-        return base;
-    }
-    if let Node::Comment(c) = node {
-        let mut base = match c.parent() {
-            Some(sxd_document::dom::ParentOfChild::Element(e)) => element_path(e, uri_to_prefix),
-            _ => String::new(),
-        };
-        base.push_str("/comment()");
-        return base;
-    }
-
-    String::new()
 }
 
 /// Render an element as a synthetic self-closing opening tag. Uses the
@@ -424,108 +379,6 @@ fn escape_attr_value(s: &str) -> String {
         }
     }
     out
-}
-
-fn element_path(
-    element: sxd_document::dom::Element<'_>,
-    uri_to_prefix: &[(String, String)],
-) -> String {
-    let mut segments: Vec<String> = Vec::new();
-    let mut current = Some(element);
-    while let Some(e) = current {
-        segments.push(segment_for(e, uri_to_prefix));
-        current = match e.parent() {
-            Some(sxd_document::dom::ParentOfChild::Element(p)) => Some(p),
-            _ => None,
-        };
-    }
-    segments.reverse();
-    let mut out = String::new();
-    for seg in segments {
-        out.push('/');
-        out.push_str(&seg);
-    }
-    out
-}
-
-fn segment_for(
-    element: sxd_document::dom::Element<'_>,
-    uri_to_prefix: &[(String, String)],
-) -> String {
-    let name = element.name();
-    let mut seg = String::new();
-    if let Some(uri) = name.namespace_uri() {
-        if let Some(prefix) = lookup_prefix(uri_to_prefix, uri) {
-            seg.push_str(prefix);
-            seg.push(':');
-        }
-    }
-    seg.push_str(name.local_part());
-
-    // Positional predicate: same-name same-namespace siblings require [n].
-    let index = same_name_index(element);
-    if index > 0 {
-        seg.push('[');
-        seg.push_str(&(index + 1).to_string());
-        seg.push(']');
-    } else if has_same_name_sibling(element) {
-        seg.push_str("[1]");
-    }
-    seg
-}
-
-/// Collect the element siblings of `element` (including itself) from its
-/// parent, regardless of whether that parent is a regular element or the
-/// document root. Both positional-predicate helpers need this view of the tree,
-/// so it's factored out to avoid duplication.
-fn element_siblings(
-    element: sxd_document::dom::Element<'_>,
-) -> Vec<sxd_document::dom::Element<'_>> {
-    use sxd_document::dom::ParentOfChild;
-    match element.parent() {
-        Some(ParentOfChild::Element(p)) => p
-            .children()
-            .into_iter()
-            .filter_map(|c| match c {
-                sxd_document::dom::ChildOfElement::Element(e) => Some(e),
-                _ => None,
-            })
-            .collect(),
-        Some(ParentOfChild::Root(r)) => r
-            .children()
-            .into_iter()
-            .filter_map(|c| match c {
-                sxd_document::dom::ChildOfRoot::Element(e) => Some(e),
-                _ => None,
-            })
-            .collect(),
-        _ => Vec::new(),
-    }
-}
-
-fn same_name_index(element: sxd_document::dom::Element<'_>) -> usize {
-    let target_name = element.name();
-    let mut count = 0usize;
-    for s in element_siblings(element) {
-        if s == element {
-            return count;
-        }
-        if s.name().namespace_uri() == target_name.namespace_uri()
-            && s.name().local_part() == target_name.local_part()
-        {
-            count += 1;
-        }
-    }
-    0
-}
-
-fn has_same_name_sibling(element: sxd_document::dom::Element<'_>) -> bool {
-    let target_name = element.name();
-    element_siblings(element).iter().any(|s| {
-        *s != element
-            && s.name().namespace_uri() == target_name.namespace_uri()
-            && s.name().local_part() == target_name.local_part()
-    })
 }
 
 fn lookup_prefix<'a>(uri_to_prefix: &'a [(String, String)], uri: &str) -> Option<&'a str> {
@@ -601,52 +454,6 @@ mod tests {
         ns.override_with("custom", "urn:example:thing");
 
         assert_eq!(ns.get("custom"), Some("urn:example:thing"));
-    }
-
-    #[test]
-    fn with_location_records_xpath_style_paths() {
-        use super::{EvalOptions, Query};
-
-        let xml = r#"<?xml version="1.0"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <sheets>
-    <sheet name="Alpha" sheetId="1" />
-    <sheet name="Beta" sheetId="2" />
-  </sheets>
-</workbook>"#;
-        let q = Query::compile("//x:sheet/@name", &[], None).unwrap();
-        let locations: Vec<Option<String>> = q
-            .evaluate_xml_with(
-                xml,
-                EvalOptions {
-                    with_location: true,
-                    as_tag: false,
-                },
-            )
-            .unwrap()
-            .into_iter()
-            .map(|m| m.location)
-            .collect();
-
-        assert_eq!(
-            locations,
-            vec![
-                Some("/x:workbook/x:sheets/x:sheet[1]/@name".to_string()),
-                Some("/x:workbook/x:sheets/x:sheet[2]/@name".to_string()),
-            ]
-        );
-    }
-
-    #[test]
-    fn without_location_leaves_field_as_none() {
-        use super::Query;
-
-        let xml = r#"<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets><sheet name="Only"/></sheets></workbook>"#;
-        let q = Query::compile("//x:sheet/@name", &[], None).unwrap();
-        let matches = q.evaluate_xml(xml).unwrap();
-
-        assert_eq!(matches.len(), 1);
-        assert_eq!(matches[0].location, None);
     }
 
     #[test]
@@ -757,25 +564,18 @@ mod tests {
     }
 
     #[test]
-    fn tag_mode_renders_element_as_self_closing_tag() {
+    fn tag_mode_populates_tag_field_for_element_matches() {
         use super::{EvalOptions, Query};
 
         let xml = r#"<root><a x="1"/></root>"#;
         let q = Query::compile("//a", &[], None).unwrap();
-        let values: Vec<String> = q
-            .evaluate_xml_with(
-                xml,
-                EvalOptions {
-                    with_location: false,
-                    as_tag: true,
-                },
-            )
-            .unwrap()
-            .into_iter()
-            .map(|m| m.value)
-            .collect();
+        let matches = q
+            .evaluate_xml_with(xml, EvalOptions { as_tag: true })
+            .unwrap();
 
-        assert_eq!(values, vec![r#"<a x="1"/>"#]);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].tag, Some(r#"<a x="1"/>"#.to_string()));
+        assert_eq!(matches[0].value, "");
     }
 
     #[test]
@@ -787,20 +587,12 @@ mod tests {
   <c:chart />
 </c:chartSpace>"#;
         let q = Query::compile("//c:chart", &[], None).unwrap();
-        let values: Vec<String> = q
-            .evaluate_xml_with(
-                xml,
-                EvalOptions {
-                    with_location: false,
-                    as_tag: true,
-                },
-            )
-            .unwrap()
-            .into_iter()
-            .map(|m| m.value)
-            .collect();
+        let matches = q
+            .evaluate_xml_with(xml, EvalOptions { as_tag: true })
+            .unwrap();
 
-        assert_eq!(values, vec!["<c:chart/>"]);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].tag, Some("<c:chart/>".to_string()));
     }
 
     #[test]
@@ -809,27 +601,19 @@ mod tests {
 
         let xml = r#"<root><a note="a &amp; b &lt; c &quot;d&quot;"/></root>"#;
         let q = Query::compile("//a", &[], None).unwrap();
-        let values: Vec<String> = q
-            .evaluate_xml_with(
-                xml,
-                EvalOptions {
-                    with_location: false,
-                    as_tag: true,
-                },
-            )
-            .unwrap()
-            .into_iter()
-            .map(|m| m.value)
-            .collect();
+        let matches = q
+            .evaluate_xml_with(xml, EvalOptions { as_tag: true })
+            .unwrap();
 
+        assert_eq!(matches.len(), 1);
         assert_eq!(
-            values,
-            vec![r#"<a note="a &amp; b &lt; c &quot;d&quot;"/>"#]
+            matches[0].tag,
+            Some(r#"<a note="a &amp; b &lt; c &quot;d&quot;"/>"#.to_string())
         );
     }
 
     #[test]
-    fn tag_mode_is_ignored_for_attribute_matches() {
+    fn tag_mode_shows_parent_element_for_attribute_matches() {
         use super::{EvalOptions, Query};
 
         let xml = r#"<?xml version="1.0"?>
@@ -837,20 +621,17 @@ mod tests {
   <sheets><sheet name="Alpha" sheetId="1"/></sheets>
 </workbook>"#;
         let q = Query::compile("//x:sheet/@name", &[], None).unwrap();
-        let values: Vec<String> = q
-            .evaluate_xml_with(
-                xml,
-                EvalOptions {
-                    with_location: false,
-                    as_tag: true,
-                },
-            )
-            .unwrap()
-            .into_iter()
-            .map(|m| m.value)
-            .collect();
+        let matches = q
+            .evaluate_xml_with(xml, EvalOptions { as_tag: true })
+            .unwrap();
 
-        assert_eq!(values, vec!["Alpha"]);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].value, "Alpha");
+        // tag shows the parent element, not None
+        assert_eq!(
+            matches[0].tag,
+            Some(r#"<x:sheet name="Alpha" sheetId="1"/>"#.to_string())
+        );
     }
 
     #[test]
@@ -859,20 +640,13 @@ mod tests {
 
         let xml = r#"<root><a><b/>text<c/></a></root>"#;
         let q = Query::compile("//a", &[], None).unwrap();
-        let values: Vec<String> = q
-            .evaluate_xml_with(
-                xml,
-                EvalOptions {
-                    with_location: false,
-                    as_tag: true,
-                },
-            )
-            .unwrap()
-            .into_iter()
-            .map(|m| m.value)
-            .collect();
+        let matches = q
+            .evaluate_xml_with(xml, EvalOptions { as_tag: true })
+            .unwrap();
 
-        assert_eq!(values, vec!["<a/>"]);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].tag, Some("<a/>".to_string()));
+        assert_eq!(matches[0].value, "text");
     }
 
     #[test]

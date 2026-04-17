@@ -73,7 +73,7 @@ fn count_mode_reports_per_file_totals() {
 }
 
 #[test]
-fn files_only_mode_prints_one_line_per_matching_workbook() {
+fn only_filenames_mode_prints_one_line_per_matching_workbook() {
     let tmp = TempDir::new().unwrap();
     let a = tmp.path().join("a.xlsx");
     let b = tmp.path().join("b.xlsx");
@@ -81,7 +81,7 @@ fn files_only_mode_prints_one_line_per_matching_workbook() {
     write_workbook(&b, &[("xl/workbook.xml", SIMPLE_WORKBOOK_XML.as_bytes())]);
 
     let out = xlpath()
-        .args(["//c:chart", "--files-only"])
+        .args(["//c:chart", "--only-filenames"])
         .arg(&a)
         .arg(&b)
         .output()
@@ -91,25 +91,6 @@ fn files_only_mode_prints_one_line_per_matching_workbook() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("a.xlsx"));
     assert!(!stdout.contains("b.xlsx"));
-}
-
-#[test]
-fn with_path_includes_xpath_location() {
-    let tmp = TempDir::new().unwrap();
-    let wb = tmp.path().join("book.xlsx");
-    write_workbook(&wb, &[("xl/workbook.xml", SIMPLE_WORKBOOK_XML.as_bytes())]);
-
-    xlpath()
-        .args(["//x:sheet/@name", "--with-path"])
-        .arg(&wb)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(
-            "/x:workbook/x:sheets/x:sheet[1]/@name: Alpha",
-        ))
-        .stdout(predicate::str::contains(
-            "/x:workbook/x:sheets/x:sheet[2]/@name: Beta",
-        ));
 }
 
 #[test]
@@ -217,7 +198,7 @@ fn dash_reads_paths_from_stdin() {
 }
 
 #[test]
-fn tag_mode_prints_matched_elements_as_self_closing_tags() {
+fn tag_mode_puts_element_tag_in_prefix() {
     let tmp = TempDir::new().unwrap();
     let wb = tmp.path().join("charts.xlsx");
     write_workbook(&wb, &[("xl/charts/chart1.xml", CHART_XML.as_bytes())]);
@@ -234,61 +215,93 @@ fn tag_mode_prints_matched_elements_as_self_closing_tags() {
         String::from_utf8_lossy(&out.stderr)
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("<c:barChart/>"), "stdout was: {stdout}");
-    assert!(stdout.contains("<c:lineChart/>"), "stdout was: {stdout}");
-}
-
-#[test]
-fn tag_only_mode_strips_the_file_and_part_prefix() {
-    let tmp = TempDir::new().unwrap();
-    let wb = tmp.path().join("charts.xlsx");
-    write_workbook(&wb, &[("xl/charts/chart1.xml", CHART_XML.as_bytes())]);
-
-    let out = xlpath()
-        .args([
-            "//c:plotArea/*",
-            "--include",
-            "xl/charts/*.xml",
-            "--tag",
-            "--tag-only",
-        ])
-        .arg(&wb)
-        .output()
-        .unwrap();
-
+    // Tag appears in the prefix (before ': '), not as the value.
     assert!(
-        out.status.success(),
-        "stderr: {:?}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    // Only the synthetic tags, no file or part path anywhere on any line.
-    assert!(!stdout.contains("charts.xlsx"), "stdout was: {stdout}");
-    assert!(
-        !stdout.contains("xl/charts/chart1.xml"),
+        stdout.contains("xl/charts/chart1.xml:<c:barChart/>:"),
         "stdout was: {stdout}"
     );
-    for line in stdout.lines() {
-        assert!(
-            line == "<c:barChart/>" || line == "<c:lineChart/>",
-            "unexpected line: {line:?}"
-        );
-    }
-    assert_eq!(stdout.lines().count(), 2);
+    assert!(
+        stdout.contains("xl/charts/chart1.xml:<c:lineChart/>:"),
+        "stdout was: {stdout}"
+    );
 }
 
 #[test]
-fn tag_only_without_tag_is_rejected() {
+fn no_filename_flag_omits_file_path() {
     let tmp = TempDir::new().unwrap();
     let wb = tmp.path().join("book.xlsx");
     write_workbook(&wb, &[("xl/workbook.xml", SIMPLE_WORKBOOK_XML.as_bytes())]);
 
-    xlpath()
-        .args(["//x:sheet", "--tag-only"])
+    let out = xlpath()
+        .args(["//x:sheet/@name", "--no-filename"])
         .arg(&wb)
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("--tag"));
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("xl/workbook.xml: Alpha"),
+        "stdout was: {stdout}"
+    );
+    assert!(!stdout.contains("book.xlsx"), "stdout was: {stdout}");
+}
+
+#[test]
+fn no_part_flag_omits_part_path() {
+    let tmp = TempDir::new().unwrap();
+    let wb = tmp.path().join("book.xlsx");
+    write_workbook(&wb, &[("xl/workbook.xml", SIMPLE_WORKBOOK_XML.as_bytes())]);
+
+    let out = xlpath()
+        .args(["//x:sheet/@name", "--no-part"])
+        .arg(&wb)
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("book.xlsx: Alpha"), "stdout was: {stdout}");
+    assert!(!stdout.contains("xl/workbook.xml"), "stdout was: {stdout}");
+}
+
+#[test]
+fn no_filename_and_no_part_prints_bare_values() {
+    let tmp = TempDir::new().unwrap();
+    let wb = tmp.path().join("book.xlsx");
+    write_workbook(&wb, &[("xl/workbook.xml", SIMPLE_WORKBOOK_XML.as_bytes())]);
+
+    let out = xlpath()
+        .args(["//x:sheet/@name", "--no-filename", "--no-part"])
+        .arg(&wb)
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines, vec!["Alpha", "Beta"], "stdout was: {stdout}");
+}
+
+#[test]
+fn no_filename_no_part_with_tag_shows_parent_element_then_value() {
+    let tmp = TempDir::new().unwrap();
+    let wb = tmp.path().join("book.xlsx");
+    write_workbook(&wb, &[("xl/workbook.xml", SIMPLE_WORKBOOK_XML.as_bytes())]);
+
+    let out = xlpath()
+        .args(["//x:sheet/@name", "--no-filename", "--no-part", "--tag"])
+        .arg(&wb)
+        .output()
+        .unwrap();
+
+    // --tag on an attribute match shows the parent element's synthetic tag.
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("<x:sheet") && stdout.contains(": Alpha"),
+        "stdout was: {stdout}"
+    );
 }
 
 #[test]

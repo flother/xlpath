@@ -42,8 +42,11 @@ warning on `stderr`.
 ### Examples
 
 ```sh
-# All sheet names in a workbook, with each match annotated by its XPath location.
-xlpath '//x:sheet/@name' workbook.xlsx --with-path
+# All sheet names in a workbook.
+xlpath '//x:sheet/@name' workbook.xlsx
+
+# All sheet names, showing the containing element for context.
+xlpath '//x:sheet/@name' workbook.xlsx --tag
 
 # All formulas in a workbook's sheets.
 xlpath '/x:worksheet/x:sheetData//x:c/x:f[text()]' --include 'xl/worksheets/sheet*.xml' workbook.xlsx
@@ -58,44 +61,66 @@ xlpath '//a:themeElements/a:clrScheme/@name' --include 'xl/theme/*.xml' .
 xlpath '//a:themeElements/a:clrScheme/*/*/@val' --include 'xl/theme/*.xml' workbook.xlsx
 
 # Filenames for workbooks in the current directory that have at least one chart.
-xlpath '/c:chartSpace' --include 'xl/charts/chart*.xml' --files-only .
+xlpath '/c:chartSpace' --include 'xl/charts/chart*.xml' --only-filenames .
 
-# Every chart type used across a folder of workbooks.
-xlpath '//c:plotArea/*' . --include 'xl/charts/*.xml' --tag --tag-only \
+# Every chart type used across a folder of workbooks, with a count of each.
+xlpath '//c:plotArea/*' . --include 'xl/charts/*.xml' --tag --no-filename --no-part \
   | sort | uniq -c
 
 # One count line per file for the total number of relationship IDs.
 xlpath '//@r:id' *.xlsx --count
 
 # Just the filenames of workbooks that define any named ranges.
-find . -name '*.xlsx' | xlpath '//x:definedName' - --files-only
+find . -name '*.xlsx' | xlpath '//x:definedName' - --only-filenames
 ```
 
 Options
 -------
 
-| Flag                      | Purpose                                                                                                             |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `--include <GLOB>`        | Only evaluate matching zip-internal paths. Repeatable.                                                              |
-| `--exclude <GLOB>`        | Skip matching zip-internal paths. Repeatable.                                                                       |
-| `--ns <PREFIX=URI>`       | Register (or override) a namespace prefix. Repeatable.                                                              |
-| `--default-ns <PREFIX>`   | Bind the document's default `xmlns` to this prefix.                                                                 |
-| `-c`, `--count`           | Print `file:N` per matching workbook instead of each match.                                                         |
-| `--files-only`            | Print only the names of workbooks with at least one match.                                                          |
-| `--with-path`             | Append an XPath-like location to each match.                                                                        |
-| `--tag`                   | Render element matches as a self-closing opening tag (e.g. `<c:lineChart val="1"/>`) instead of their text content. |
-| `--tag-only`              | Print only the match value on each line, with no `file:part:` prefix. Requires `--tag`.                             |
-| `-L`, `--follow`          | Follow symbolic links when walking directories. Off by default.                                                     |
-| `-j <N>`, `--threads <N>` | Worker threads (defaults to logical CPUs). `-j 1` forces deterministic output order.                                |
+| Flag                      | Purpose                                                                                                                                                                                                                            |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--include <GLOB>`        | Only evaluate matching zip-internal paths. Repeatable.                                                                                                                                                                             |
+| `--exclude <GLOB>`        | Skip matching zip-internal paths. Repeatable.                                                                                                                                                                                      |
+| `--ns <PREFIX=URI>`       | Register (or override) a namespace prefix. Repeatable.                                                                                                                                                                             |
+| `--default-ns <PREFIX>`   | Bind the document's default `xmlns` to this prefix.                                                                                                                                                                                |
+| `-c`, `--count`           | Print `file:N` per matching workbook instead of each match.                                                                                                                                                                        |
+| `--only-filenames`        | Print only the names of workbooks with at least one match.                                                                                                                                                                         |
+| `--tag`                   | Add the matching element's synthetic self-closing tag to the output prefix (e.g. `<x:sheet name="A" sheetId="1"/>`). For element matches, the tag is the element itself; for attribute and text matches, it is the parent element. |
+| `--no-filename`           | Omit the filename from each output line.                                                                                                                                                                                           |
+| `--no-part`               | Omit the zip-internal part path from each output line.                                                                                                                                                                             |
+| `-L`, `--follow`          | Follow symbolic links when walking directories. Off by default.                                                                                                                                                                    |
+| `-j <N>`, `--threads <N>` | Worker threads (defaults to logical CPUs). `-j 1` forces deterministic output order.                                                                                                                                               |
 
-`--count` and `--files-only` are mutually exclusive. `--tag` only changes how element matches
-render; it is silently ignored under `--count` and `--files-only` (which don't emit per-match lines)
-and is a no-op for attribute, text, and atomic matches. `--tag-only` requires `--tag` and conflicts
-with `--count`, `--files-only`, and `--with-path`.
+`--count` and `--only-filenames` are mutually exclusive. `--tag`, `--no-filename`, and `--no-part`
+conflict with `--count` and `--only-filenames` (which emit one line per file rather than one per
+match).
 
 The synthetic tag emitted by `--tag` is a reporting artefact, not a round-trippable XML fragment: it
 is always self-closing, carries no `xmlns` declarations, and uses the canonical prefix from `xlpath`
 's namespace registry rather than whatever prefix the document itself declared.
+
+### Output format
+
+The default output format is to show one match per line à la grep:
+
+```text
+filename:part: value
+```
+
+You can use flags to control the output. The `filename` and `part` sections can be suppressed, and
+you can add a section for the matching XML element's tag (or parent element for attribute and text
+matches):
+
+```text
+filename:part: value          (default)
+filename:part:<tag/>: value   (--tag)
+part: value                   (--no-filename)
+part:<tag/>: value            (--no-filename --tag)
+filename: value               (--no-part)
+filename:<tag/>: value        (--no-part --tag)
+value                         (--no-filename --no-part)
+<tag/>: value                 (--no-filename --no-part --tag)
+```
 
 Namespaces
 ----------

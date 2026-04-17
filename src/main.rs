@@ -85,11 +85,9 @@ fn run() -> Result<ExitCode> {
     let had_error = AtomicBool::new(false);
 
     let mode = cli.output_mode();
-    let with_path = cli.with_path;
-    let eval_opts = EvalOptions {
-        with_location: with_path,
-        as_tag: cli.tag,
-    };
+    let no_filename = cli.no_filename;
+    let no_path_flag = cli.no_part;
+    let eval_opts = EvalOptions { as_tag: cli.tag };
 
     paths.par_iter().for_each(|path| {
         let mut per_part: Vec<(String, Vec<xlpath::xpath::Match>)> = Vec::new();
@@ -140,7 +138,8 @@ fn run() -> Result<ExitCode> {
                 if total > 0 {
                     match_count.fetch_add(total, Ordering::Relaxed);
                 }
-                let rendered = output::format_file(mode, with_path, path, &per_part);
+                let rendered =
+                    output::format_file(mode, no_filename, no_path_flag, path, &per_part);
                 if !rendered.is_empty() {
                     writer.emit_out(&rendered);
                 }
