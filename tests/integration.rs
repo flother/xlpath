@@ -239,7 +239,7 @@ fn tag_mode_prints_matched_elements_as_self_closing_tags() {
 }
 
 #[test]
-fn tag_only_mode_strips_the_file_and_entry_prefix() {
+fn tag_only_mode_strips_the_file_and_part_prefix() {
     let tmp = TempDir::new().unwrap();
     let wb = tmp.path().join("charts.xlsx");
     write_workbook(&wb, &[("xl/charts/chart1.xml", CHART_XML.as_bytes())]);
@@ -262,7 +262,7 @@ fn tag_only_mode_strips_the_file_and_entry_prefix() {
         String::from_utf8_lossy(&out.stderr)
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
-    // Only the synthetic tags, no file or entry path anywhere on any line.
+    // Only the synthetic tags, no file or part path anywhere on any line.
     assert!(!stdout.contains("charts.xlsx"), "stdout was: {stdout}");
     assert!(
         !stdout.contains("xl/charts/chart1.xml"),

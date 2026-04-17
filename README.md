@@ -4,7 +4,7 @@ xlpath
 Query Excel (OOXML) XLSX files with XPath.
 
 `xlpath` lets you play with a workbook as it really is: a bunch of XML files in a ZIP archive. You
-can run a XPath 1.0 expression against that XML. The output is grep-like (`file:entry: value`) by
+can run a XPath 1.0 expression against that XML. The output is grep-like (`file:part: value`) by
 default, so it composes with the usual shell tools for surveying feature usage across folders of
 workbooks.
 
@@ -83,7 +83,7 @@ Options
 | `--files-only`            | Print only the names of workbooks with at least one match.                                                          |
 | `--with-path`             | Append an XPath-like location to each match.                                                                        |
 | `--tag`                   | Render element matches as a self-closing opening tag (e.g. `<c:lineChart val="1"/>`) instead of their text content. |
-| `--tag-only`              | Print only the match value on each line, with no `file:entry:` prefix. Requires `--tag`.                            |
+| `--tag-only`              | Print only the match value on each line, with no `file:part:` prefix. Requires `--tag`.                             |
 | `-j <N>`, `--threads <N>` | Worker threads (defaults to logical CPUs). `-j 1` forces deterministic output order.                                |
 
 `--count` and `--files-only` are mutually exclusive. `--tag` only changes how element matches

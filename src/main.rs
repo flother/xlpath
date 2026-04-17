@@ -10,7 +10,7 @@ use xlpath::cli::Cli;
 use xlpath::error::{FileWarning, SkipReason};
 use xlpath::output::{self, Writer};
 use xlpath::walk;
-use xlpath::xlsx::{self, EntryFilter};
+use xlpath::xlsx::{self, PartFilter};
 use xlpath::xpath::{EvalOptions, Query};
 
 fn main() -> ExitCode {
@@ -51,7 +51,7 @@ fn run() -> Result<ExitCode> {
         .map_err(|e| anyhow!("{}", e))
         .context("failed to compile XPath expression")?;
 
-    let filter = EntryFilter::new(&cli.includes, &cli.excludes)
+    let filter = PartFilter::new(&cli.includes, &cli.excludes)
         .map_err(|e| anyhow!("{}", e))
         .context("failed to compile include/exclude globs")?;
 
@@ -84,18 +84,18 @@ fn run() -> Result<ExitCode> {
     };
 
     paths.par_iter().for_each(|path| {
-        let mut per_entry: Vec<(String, Vec<xlpath::xpath::Match>)> = Vec::new();
-        let mut entry_warnings = String::new();
+        let mut per_part: Vec<(String, Vec<xlpath::xpath::Match>)> = Vec::new();
+        let mut part_warnings = String::new();
 
-        let result = xlsx::process_entries(path, &filter, |entry_name, data| {
+        let result = xlsx::process_parts(path, &filter, |part_name, data| {
             let xml = match std::str::from_utf8(data) {
                 Ok(s) => s,
                 Err(_) => {
-                    entry_warnings.push_str(
+                    part_warnings.push_str(
                         &FileWarning {
                             path: path.clone(),
                             reason: SkipReason::MalformedXml {
-                                entry: entry_name.to_string(),
+                                part: part_name.to_string(),
                                 message: "not valid UTF-8".to_string(),
                             },
                         }
@@ -108,14 +108,14 @@ fn run() -> Result<ExitCode> {
 
             match query.evaluate_xml_with(xml, eval_opts) {
                 Ok(matches) => {
-                    per_entry.push((entry_name.to_string(), matches));
+                    per_part.push((part_name.to_string(), matches));
                 }
                 Err(e) => {
-                    entry_warnings.push_str(
+                    part_warnings.push_str(
                         &FileWarning {
                             path: path.clone(),
                             reason: SkipReason::MalformedXml {
-                                entry: entry_name.to_string(),
+                                part: part_name.to_string(),
                                 message: e.to_string(),
                             },
                         }
@@ -128,18 +128,18 @@ fn run() -> Result<ExitCode> {
 
         match result {
             Ok(()) => {
-                let total: usize = per_entry.iter().map(|(_, ms)| ms.len()).sum();
+                let total: usize = per_part.iter().map(|(_, ms)| ms.len()).sum();
                 if total > 0 {
                     match_count.fetch_add(total, Ordering::Relaxed);
                 }
-                let rendered = output::format_file(mode, with_path, path, &per_entry);
+                let rendered = output::format_file(mode, with_path, path, &per_part);
                 if !rendered.is_empty() {
                     writer.emit_out(&rendered);
                 }
-                // Per-entry warnings surface on stderr after any matches from
+                // Per-part warnings surface on stderr after any matches from
                 // the same file have been printed.
-                if !entry_warnings.is_empty() {
-                    writer.emit_err(&entry_warnings);
+                if !part_warnings.is_empty() {
+                    writer.emit_err(&part_warnings);
                 }
             }
             Err(reason) => {

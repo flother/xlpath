@@ -1,5 +1,5 @@
 //! Opens OOXML zip archives, detects encryption, and iterates over internal XML
-//! entries filtered by include/exclude globs.
+//! parts filtered by include/exclude globs.
 
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
@@ -11,14 +11,14 @@ use crate::error::SkipReason;
 
 /// Compiled include/exclude globs, applied to zip-internal paths.
 #[derive(Debug)]
-pub struct EntryFilter {
+pub struct PartFilter {
     includes: Option<GlobSet>,
     excludes: Option<GlobSet>,
 }
 
-impl EntryFilter {
+impl PartFilter {
     /// Compile include/exclude globs. An empty `includes` list means "accept
-    /// every XML-shaped entry"; anything in `excludes` is rejected regardless.
+    /// every XML-shaped part"; anything in `excludes` is rejected regardless.
     pub fn new(includes: &[String], excludes: &[String]) -> Result<Self, globset::Error> {
         Ok(Self {
             includes: build(includes)?,
@@ -26,32 +26,32 @@ impl EntryFilter {
         })
     }
 
-    /// Whether an entry at this zip-internal path should be processed.
-    pub fn accepts(&self, entry: &str) -> bool {
+    /// Whether a part at this zip-internal path should be processed.
+    pub fn accepts(&self, part: &str) -> bool {
         if let Some(excludes) = &self.excludes {
-            if excludes.is_match(entry) {
+            if excludes.is_match(part) {
                 return false;
             }
         }
         match &self.includes {
-            Some(includes) => includes.is_match(entry),
+            Some(includes) => includes.is_match(part),
             None => true,
         }
     }
 }
 
-/// Open an OOXML workbook and stream XML-shaped entries to `on_entry`. Path
-/// names passed to the callback are the zip-internal entry names (e.g.
-/// `xl/workbook.xml`). The `filter` controls which entries are emitted; an
-/// empty include list means "every XML-shaped entry".
+/// Open an OOXML workbook and stream XML-shaped parts to `on_part`. Path names
+/// passed to the callback are the zip-internal part names (e.g.
+/// `xl/workbook.xml`). The `filter` controls which parts are emitted; an empty
+/// include list means "every XML-shaped part".
 ///
-/// Entries whose names do not end in `.xml` or `.rels` are skipped silently: we
+/// Parts whose names do not end in `.xml` or `.rels` are skipped silently: we
 /// assume binary parts (images, bins, ole objects) are uninteresting for XPath
 /// querying.
-pub fn process_entries<F>(
+pub fn process_parts<F>(
     path: &Path,
-    filter: &EntryFilter,
-    mut on_entry: F,
+    filter: &PartFilter,
+    mut on_part: F,
 ) -> Result<(), SkipReason>
 where
     F: FnMut(&str, &[u8]),
@@ -72,24 +72,23 @@ where
 
     let mut buf = Vec::new();
     for i in 0..archive.len() {
-        let mut entry = archive
+        let mut part = archive
             .by_index(i)
             .map_err(|e| SkipReason::CorruptZip(e.to_string()))?;
-        if entry.is_dir() {
+        if part.is_dir() {
             continue;
         }
-        let name = entry.name().to_string();
-        if !is_xml_entry(&name) {
+        let name = part.name().to_string();
+        if !is_xml_part(&name) {
             continue;
         }
         if !filter.accepts(&name) {
             continue;
         }
         buf.clear();
-        entry
-            .read_to_end(&mut buf)
+        part.read_to_end(&mut buf)
             .map_err(|e| SkipReason::CorruptZip(e.to_string()))?;
-        on_entry(&name, &buf);
+        on_part(&name, &buf);
     }
     Ok(())
 }
@@ -107,7 +106,7 @@ fn read_up_to(reader: &mut impl Read, buf: &mut [u8]) -> std::io::Result<usize> 
     Ok(filled)
 }
 
-fn is_xml_entry(name: &str) -> bool {
+fn is_xml_part(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     lower.ends_with(".xml") || lower.ends_with(".rels")
 }
@@ -143,14 +142,14 @@ mod tests {
     use zip::CompressionMethod;
     use zip::ZipWriter;
 
-    use super::{process_entries, EntryFilter};
+    use super::{process_parts, PartFilter};
     use crate::error::SkipReason;
 
-    fn write_zip(path: &Path, entries: &[(&str, &[u8])]) {
+    fn write_zip(path: &Path, parts: &[(&str, &[u8])]) {
         let file = std::fs::File::create(path).unwrap();
         let mut zw = ZipWriter::new(file);
         let opts = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-        for (name, data) in entries {
+        for (name, data) in parts {
             zw.start_file(*name, opts).unwrap();
             zw.write_all(data).unwrap();
         }
@@ -158,16 +157,16 @@ mod tests {
     }
 
     #[test]
-    fn accepts_entries_matching_an_include_glob() {
-        let filter = EntryFilter::new(&["xl/charts/*.xml".into()], &[]).unwrap();
+    fn accepts_parts_matching_an_include_glob() {
+        let filter = PartFilter::new(&["xl/charts/*.xml".into()], &[]).unwrap();
 
         assert!(filter.accepts("xl/charts/chart1.xml"));
         assert!(!filter.accepts("xl/worksheets/sheet1.xml"));
     }
 
     #[test]
-    fn empty_includes_means_accept_all_entries() {
-        let filter = EntryFilter::new(&[], &[]).unwrap();
+    fn empty_includes_means_accept_all_parts() {
+        let filter = PartFilter::new(&[], &[]).unwrap();
 
         assert!(filter.accepts("xl/workbook.xml"));
         assert!(filter.accepts("xl/charts/chart1.xml"));
@@ -176,7 +175,7 @@ mod tests {
 
     #[test]
     fn excludes_override_includes() {
-        let filter = EntryFilter::new(&["xl/**/*.xml".into()], &["xl/charts/**".into()]).unwrap();
+        let filter = PartFilter::new(&["xl/**/*.xml".into()], &["xl/charts/**".into()]).unwrap();
 
         assert!(filter.accepts("xl/workbook.xml"));
         assert!(!filter.accepts("xl/charts/chart1.xml"));
@@ -184,7 +183,7 @@ mod tests {
 
     #[test]
     fn excludes_apply_even_with_no_includes() {
-        let filter = EntryFilter::new(&[], &["**/_rels/*".into()]).unwrap();
+        let filter = PartFilter::new(&[], &["**/_rels/*".into()]).unwrap();
 
         assert!(filter.accepts("xl/workbook.xml"));
         assert!(!filter.accepts("xl/_rels/workbook.xml.rels"));
@@ -192,7 +191,7 @@ mod tests {
 
     #[test]
     fn supports_double_star_globs() {
-        let filter = EntryFilter::new(&["**/*.xml".into()], &[]).unwrap();
+        let filter = PartFilter::new(&["**/*.xml".into()], &[]).unwrap();
 
         assert!(filter.accepts("xl/workbook.xml"));
         assert!(filter.accepts("xl/charts/chart1.xml"));
@@ -200,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn iterates_xml_entries_in_a_workbook() {
+    fn iterates_xml_parts_in_a_workbook() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("book.xlsx");
         write_zip(
@@ -212,9 +211,9 @@ mod tests {
             ],
         );
 
-        let filter = EntryFilter::new(&[], &[]).unwrap();
+        let filter = PartFilter::new(&[], &[]).unwrap();
         let mut seen: Vec<(String, Vec<u8>)> = Vec::new();
-        process_entries(&path, &filter, |name, data| {
+        process_parts(&path, &filter, |name, data| {
             seen.push((name.to_string(), data.to_vec()));
         })
         .unwrap();
@@ -230,7 +229,7 @@ mod tests {
     }
 
     #[test]
-    fn applies_entry_filter() {
+    fn applies_part_filter() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("book.xlsx");
         write_zip(
@@ -241,9 +240,9 @@ mod tests {
             ],
         );
 
-        let filter = EntryFilter::new(&["xl/charts/*.xml".into()], &[]).unwrap();
+        let filter = PartFilter::new(&["xl/charts/*.xml".into()], &[]).unwrap();
         let mut seen: Vec<String> = Vec::new();
-        process_entries(&path, &filter, |name, _| seen.push(name.to_string())).unwrap();
+        process_parts(&path, &filter, |name, _| seen.push(name.to_string())).unwrap();
 
         assert_eq!(seen, vec!["xl/charts/chart1.xml".to_string()]);
     }
@@ -254,8 +253,8 @@ mod tests {
         let path = tmp.path().join("broken.xlsx");
         std::fs::write(&path, b"this is not a zip file").unwrap();
 
-        let filter = EntryFilter::new(&[], &[]).unwrap();
-        let err = process_entries(&path, &filter, |_, _| {}).unwrap_err();
+        let filter = PartFilter::new(&[], &[]).unwrap();
+        let err = process_parts(&path, &filter, |_, _| {}).unwrap_err();
 
         assert!(matches!(err, SkipReason::CorruptZip(_)));
     }
@@ -270,8 +269,8 @@ mod tests {
         contents.extend_from_slice(&[0u8; 512]);
         std::fs::write(&path, contents).unwrap();
 
-        let filter = EntryFilter::new(&[], &[]).unwrap();
-        let err = process_entries(&path, &filter, |_, _| {}).unwrap_err();
+        let filter = PartFilter::new(&[], &[]).unwrap();
+        let err = process_parts(&path, &filter, |_, _| {}).unwrap_err();
 
         assert!(matches!(err, SkipReason::Encrypted));
     }

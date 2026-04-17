@@ -9,12 +9,12 @@ use zip::{CompressionMethod, ZipWriter};
 
 /// Write a (fake) workbook to `path` containing the given (internal_name,
 /// bytes) pairs. Minimal: we don't try to produce a valid OOXML package, only a
-/// ZIP with the entries the test needs.
-pub fn write_workbook(path: &Path, entries: &[(&str, &[u8])]) {
+/// ZIP with the XML parts the test needs.
+pub fn write_workbook(path: &Path, parts: &[(&str, &[u8])]) {
     let file = std::fs::File::create(path).unwrap();
     let mut zw = ZipWriter::new(file);
     let opts = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-    for (name, data) in entries {
+    for (name, data) in parts {
         zw.start_file(*name, opts).unwrap();
         zw.write_all(data).unwrap();
     }

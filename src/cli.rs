@@ -22,12 +22,12 @@ pub struct Cli {
     #[arg(value_name = "PATH", required = true)]
     pub paths: Vec<PathBuf>,
 
-    /// Only consider zip entries matching this glob. Repeatable. Globs apply to
+    /// Only consider XML parts matching this glob. Repeatable. Globs apply to
     /// the zip-internal path (e.g. `xl/charts/*.xml`).
     #[arg(long = "include", value_name = "GLOB", action = ArgAction::Append)]
     pub includes: Vec<String>,
 
-    /// Skip zip entries matching this glob. Repeatable.
+    /// Skip XML parts matching this glob. Repeatable.
     #[arg(long = "exclude", value_name = "GLOB", action = ArgAction::Append)]
     pub excludes: Vec<String>,
 
@@ -60,7 +60,7 @@ pub struct Cli {
     #[arg(long = "tag")]
     pub tag: bool,
 
-    /// Print only the match value on each line — no `file:entry:` prefix.
+    /// Print only the match value on each line — no `file:part:` prefix.
     /// Requires `--tag` (so element matches render as their synthetic
     /// self-closing tag). Conflicts with `--count`, `--files-only`, and
     /// `--with-path`.
@@ -80,7 +80,7 @@ pub struct Cli {
 /// Which output style to use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputMode {
-    /// Default: one line per match, `file:entry: value` (plus optional location
+    /// Default: one line per match, `file:part: value` (plus optional location
     /// when `--with-path` is set).
     Minimal,
     /// `--count`: one line per matching file, `file:N`.
@@ -88,7 +88,7 @@ pub enum OutputMode {
     /// `--files-only`: one line per matching file, `file`.
     FilesOnly,
     /// `--tag-only`: one line per match containing just the match value (which,
-    /// with `--tag`, is the synthetic self-closing tag). No file or entry
+    /// with `--tag`, is the synthetic self-closing tag). No file or part
     /// prefix.
     TagOnly,
 }

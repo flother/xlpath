@@ -93,14 +93,14 @@ impl Namespaces {
     }
 
     /// Iterate over the effective bindings. Called on the hot path once per XML
-    /// entry, so this is a zero-allocation view of the internal vector.
+    /// part, so this is a zero-allocation view of the internal vector.
     pub fn effective(&self) -> impl Iterator<Item = (&str, &str)> + '_ {
         self.bindings.iter().map(|(p, u)| (p.as_str(), u.as_str()))
     }
 }
 
 /// How an XPath match presented itself. Informs the final output formatting
-/// (`{file}:{entry}: {value}` in every case, with `--with-path` appending a
+/// (`{file}:{part}: {value}` in every case, with `--with-path` appending a
 /// location string for nodes).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MatchKind {
@@ -150,7 +150,7 @@ pub enum QueryError {
 /// The raw expression string is stored and re-parsed once per document because
 /// the `sxd-xpath` expression tree is neither `Send` nor `Sync`: sharing it
 /// across rayon workers would require `unsafe impl Sync`. Parsing is cheap
-/// relative to reading the zip entry and parsing the XML, so the trade-off
+/// relative to reading the part and parsing the XML, so the trade-off
 /// favours simplicity here.
 pub struct Query {
     expression: String,

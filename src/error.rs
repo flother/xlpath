@@ -13,8 +13,8 @@ pub enum SkipReason {
     #[error("corrupt zip: {0}")]
     CorruptZip(String),
 
-    #[error("malformed XML in `{entry}`: {message}")]
-    MalformedXml { entry: String, message: String },
+    #[error("malformed XML in `{part}`: {message}")]
+    MalformedXml { part: String, message: String },
 
     #[error("i/o error: {0}")]
     Io(#[from] io::Error),

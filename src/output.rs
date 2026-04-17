@@ -7,8 +7,8 @@ use std::sync::Mutex;
 use crate::cli::OutputMode;
 use crate::xpath::Match;
 
-/// Per-entry match batch as produced by the main worker loop.
-pub type EntryMatches = (String, Vec<Match>);
+/// Per-part match batch as produced by the main worker loop.
+pub type PartMatches = (String, Vec<Match>);
 
 /// Build the full output string for a single workbook, ready to be written to
 /// stdout in one shot (keeps each file's lines contiguous even under parallel
@@ -17,23 +17,23 @@ pub fn format_file(
     mode: OutputMode,
     with_path: bool,
     path: &Path,
-    entries: &[EntryMatches],
+    parts: &[PartMatches],
 ) -> String {
     match mode {
-        OutputMode::Minimal => format_minimal(with_path, path, entries),
-        OutputMode::Count => format_count(path, entries),
-        OutputMode::FilesOnly => format_files_only(path, entries),
-        OutputMode::TagOnly => format_tag_only(entries),
+        OutputMode::Minimal => format_minimal(with_path, path, parts),
+        OutputMode::Count => format_count(path, parts),
+        OutputMode::FilesOnly => format_files_only(path, parts),
+        OutputMode::TagOnly => format_tag_only(parts),
     }
 }
 
-fn format_minimal(with_path: bool, path: &Path, entries: &[EntryMatches]) -> String {
+fn format_minimal(with_path: bool, path: &Path, parts: &[PartMatches]) -> String {
     let mut out = String::new();
-    for (entry, matches) in entries {
+    for (part, matches) in parts {
         for m in matches {
             out.push_str(&path.display().to_string());
             out.push(':');
-            out.push_str(entry);
+            out.push_str(part);
             if with_path {
                 if let Some(loc) = &m.location {
                     out.push(':');
@@ -48,17 +48,17 @@ fn format_minimal(with_path: bool, path: &Path, entries: &[EntryMatches]) -> Str
     out
 }
 
-fn format_count(path: &Path, entries: &[EntryMatches]) -> String {
-    let total: usize = entries.iter().map(|(_, ms)| ms.len()).sum();
+fn format_count(path: &Path, parts: &[PartMatches]) -> String {
+    let total: usize = parts.iter().map(|(_, ms)| ms.len()).sum();
     if total == 0 {
         return String::new();
     }
     format!("{}:{}\n", path.display(), total)
 }
 
-fn format_tag_only(entries: &[EntryMatches]) -> String {
+fn format_tag_only(parts: &[PartMatches]) -> String {
     let mut out = String::new();
-    for (_, matches) in entries {
+    for (_, matches) in parts {
         for m in matches {
             out.push_str(&m.value);
             out.push('\n');
@@ -67,8 +67,8 @@ fn format_tag_only(entries: &[EntryMatches]) -> String {
     out
 }
 
-fn format_files_only(path: &Path, entries: &[EntryMatches]) -> String {
-    let any = entries.iter().any(|(_, ms)| !ms.is_empty());
+fn format_files_only(path: &Path, parts: &[PartMatches]) -> String {
+    let any = parts.iter().any(|(_, ms)| !ms.is_empty());
     if any {
         format!("{}\n", path.display())
     } else {
@@ -154,12 +154,12 @@ mod tests {
     #[test]
     fn minimal_mode_formats_one_line_per_match() {
         let path = PathBuf::from("book.xlsx");
-        let entries = vec![(
+        let parts = vec![(
             "xl/charts/chart1.xml".to_string(),
             vec![m(MatchKind::Element, "bar"), m(MatchKind::Element, "line")],
         )];
 
-        let out = format_file(OutputMode::Minimal, false, &path, &entries);
+        let out = format_file(OutputMode::Minimal, false, &path, &parts);
 
         assert_eq!(
             out,
@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn minimal_mode_with_path_includes_the_location_segment() {
         let path = PathBuf::from("book.xlsx");
-        let entries = vec![(
+        let parts = vec![(
             "xl/workbook.xml".to_string(),
             vec![m_loc(
                 MatchKind::Attribute,
@@ -179,7 +179,7 @@ mod tests {
             )],
         )];
 
-        let out = format_file(OutputMode::Minimal, true, &path, &entries);
+        let out = format_file(OutputMode::Minimal, true, &path, &parts);
 
         assert_eq!(
             out,
@@ -188,9 +188,9 @@ mod tests {
     }
 
     #[test]
-    fn count_mode_aggregates_matches_across_entries() {
+    fn count_mode_aggregates_matches_across_parts() {
         let path = PathBuf::from("book.xlsx");
-        let entries = vec![
+        let parts = vec![
             (
                 "xl/charts/chart1.xml".to_string(),
                 vec![m(MatchKind::Element, "a"), m(MatchKind::Element, "b")],
@@ -201,7 +201,7 @@ mod tests {
             ),
         ];
 
-        let out = format_file(OutputMode::Count, false, &path, &entries);
+        let out = format_file(OutputMode::Count, false, &path, &parts);
 
         assert_eq!(out, "book.xlsx:3\n");
     }
@@ -209,9 +209,9 @@ mod tests {
     #[test]
     fn count_mode_emits_nothing_when_the_file_has_no_matches() {
         let path = PathBuf::from("book.xlsx");
-        let entries: Vec<super::EntryMatches> = Vec::new();
+        let parts: Vec<super::PartMatches> = Vec::new();
 
-        let out = format_file(OutputMode::Count, false, &path, &entries);
+        let out = format_file(OutputMode::Count, false, &path, &parts);
 
         assert!(out.is_empty());
     }
@@ -219,7 +219,7 @@ mod tests {
     #[test]
     fn files_only_mode_prints_path_once_when_any_match_exists() {
         let path = PathBuf::from("book.xlsx");
-        let entries = vec![
+        let parts = vec![
             (
                 "xl/workbook.xml".to_string(),
                 vec![m(MatchKind::Element, "x")],
@@ -227,7 +227,7 @@ mod tests {
             ("xl/charts/chart1.xml".to_string(), Vec::new()),
         ];
 
-        let out = format_file(OutputMode::FilesOnly, false, &path, &entries);
+        let out = format_file(OutputMode::FilesOnly, false, &path, &parts);
 
         assert_eq!(out, "book.xlsx\n");
     }
@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn tag_only_mode_prints_one_line_per_match_with_no_prefix() {
         let path = PathBuf::from("book.xlsx");
-        let entries = vec![(
+        let parts = vec![(
             "xl/charts/chart1.xml".to_string(),
             vec![
                 m(MatchKind::Element, "<c:barChart/>"),
@@ -243,7 +243,7 @@ mod tests {
             ],
         )];
 
-        let out = format_file(OutputMode::TagOnly, false, &path, &entries);
+        let out = format_file(OutputMode::TagOnly, false, &path, &parts);
 
         assert_eq!(out, "<c:barChart/>\n<c:lineChart/>\n");
     }
@@ -251,9 +251,9 @@ mod tests {
     #[test]
     fn tag_only_mode_emits_nothing_without_matches() {
         let path = PathBuf::from("book.xlsx");
-        let entries: Vec<super::EntryMatches> = Vec::new();
+        let parts: Vec<super::PartMatches> = Vec::new();
 
-        let out = format_file(OutputMode::TagOnly, false, &path, &entries);
+        let out = format_file(OutputMode::TagOnly, false, &path, &parts);
 
         assert!(out.is_empty());
     }
@@ -261,9 +261,9 @@ mod tests {
     #[test]
     fn files_only_mode_is_silent_without_matches() {
         let path = PathBuf::from("book.xlsx");
-        let entries = vec![("xl/workbook.xml".to_string(), Vec::new())];
+        let parts = vec![("xl/workbook.xml".to_string(), Vec::new())];
 
-        let out = format_file(OutputMode::FilesOnly, false, &path, &entries);
+        let out = format_file(OutputMode::FilesOnly, false, &path, &parts);
 
         assert!(out.is_empty());
     }
