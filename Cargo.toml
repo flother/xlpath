@@ -1,0 +1,39 @@
+[package]
+name = "xlpath"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+description = "Query Excel (OOXML) files with XPath."
+license = "MIT OR Apache-2.0"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "xlpath"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.6", features = ["derive", "wrap_help"] }
+zip = { version = "2", default-features = false, features = ["deflate-flate2", "flate2"] }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+sxd-document = "0.3"
+sxd-xpath = "0.4"
+rayon = "1.12"
+walkdir = "2.5"
+globset = "0.4"
+anyhow = "1.0"
+thiserror = "1.0"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1"
+tempfile = "3.10"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
