@@ -1,7 +1,7 @@
 xlpath
 ======
 
-Query Excel (OOXML) XLSX files with XPath.
+Query the XML within Excel XLSX files using XPath.
 
 `xlpath` lets you play with a workbook as it really is: a bunch of XML files in a ZIP archive. You
 can run a XPath 1.0 expression against that XML. The output is grep-like (`file:part: value`) by
