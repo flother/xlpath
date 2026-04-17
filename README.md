@@ -50,6 +50,9 @@ xlpath '//a:themeElements/a:clrScheme/@name' --include 'xl/theme/*.xml' .
 # Colours set in the theme.
 xlpath '//a:themeElements/a:clrScheme/*/*/@val' --include 'xl/theme/*.xml' workbook.xlsx
 
+# Filenames for workbooks in the current directory that have at least one chart.
+xlpath '/c:chartSpace' --include 'xl/charts/chart*.xml' --files-only .
+
 # Every chart type used across a folder of workbooks.
 xlpath '//c:plotArea/*' . --include 'xl/charts/*.xml' --tag --tag-only \
   | sort | uniq -c
