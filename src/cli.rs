@@ -18,8 +18,9 @@ pub struct Cli {
     pub xpath: String,
 
     /// Files and/or directories to scan. Use `-` to read newline-separated
-    /// paths from stdin. Directories are walked recursively.
-    #[arg(value_name = "PATH", required = true)]
+    /// paths from stdin. Directories are walked recursively. Defaults to the
+    /// current working directory if omitted.
+    #[arg(value_name = "PATH")]
     pub paths: Vec<PathBuf>,
 
     /// Only consider XML parts matching this glob. Repeatable. Globs apply to

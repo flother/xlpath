@@ -349,3 +349,18 @@ fn ns_flag_registers_user_namespace() {
         .success()
         .stdout(predicate::str::contains("xl/custom.xml: ok"));
 }
+
+#[test]
+fn omitted_path_defaults_to_current_directory() {
+    let tmp = TempDir::new().unwrap();
+    let wb = tmp.path().join("book.xlsx");
+    write_workbook(&wb, &[("xl/workbook.xml", SIMPLE_WORKBOOK_XML.as_bytes())]);
+
+    xlpath()
+        .args(["//x:sheet/@name"])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("book.xlsx"))
+        .stdout(predicate::str::contains(": Alpha"));
+}

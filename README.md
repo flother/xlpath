@@ -31,12 +31,13 @@ Usage
 -----
 
 ```text
-xlpath <XPATH> <PATH>... [OPTIONS]
+xlpath <XPATH> [PATH]... [OPTIONS]
 ```
 
 Each `PATH` may be a file or a directory (recursed). Pass `-` to read newline-separated paths from
-`stdin`. Supported extensions: `.xlsx`, `.xlsm`, `.xltx`, `.xltm`. Encrypted workbooks (OLE2
-compound documents) are skipped with a warning on `stderr`.
+`stdin`. If no `PATH` is given, `xlpath` walks the current working directory. Supported extensions:
+`.xlsx`, `.xlsm`, `.xltx`, `.xltm`. Encrypted workbooks (OLE2 compound documents) are skipped with a
+warning on `stderr`.
 
 ### Examples
 

@@ -1,4 +1,5 @@
 use std::io::{self, BufReader};
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -44,7 +45,7 @@ fn reset_sigpipe() {
 fn reset_sigpipe() {}
 
 fn run() -> Result<ExitCode> {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
 
     let ns_pairs = parse_namespace_args(&cli.namespaces)?;
     let query = Query::compile(&cli.xpath, &ns_pairs, cli.default_ns.as_deref())
@@ -55,9 +56,16 @@ fn run() -> Result<ExitCode> {
         .map_err(|e| anyhow!("{}", e))
         .context("failed to compile include/exclude globs")?;
 
-    // Resolve the positional path arguments into a concrete file list.
+    // Resolve the positional path arguments into a concrete file list. With no
+    // PATH given, default to the current working directory so that `xlpath
+    // <XPATH>` surveys the whole tree from where the user is standing.
+    let inputs: Vec<PathBuf> = if cli.paths.is_empty() {
+        vec![PathBuf::from(".")]
+    } else {
+        std::mem::take(&mut cli.paths)
+    };
     let stdin = io::stdin();
-    let paths = walk::collect(&cli.paths, BufReader::new(stdin.lock()))
+    let paths = walk::collect(&inputs, BufReader::new(stdin.lock()))
         .context("failed to resolve input paths")?;
 
     // Explicit thread count if given, otherwise rayon's default (logical CPUs).
