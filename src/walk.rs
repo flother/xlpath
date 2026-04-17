@@ -110,7 +110,7 @@ mod tests {
         let path = dir.path().join("book.xlsx");
         touch(&path);
 
-        let result = collect(&[path.clone()], empty_stdin()).unwrap();
+        let result = collect(std::slice::from_ref(&path), empty_stdin()).unwrap();
 
         assert_eq!(result, vec![path]);
     }
