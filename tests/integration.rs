@@ -14,7 +14,7 @@ fn xlpath() -> Command {
 }
 
 #[test]
-fn extracts_sheet_names_via_default_ns() {
+fn extracts_sheet_names_via_preregistered_prefix() {
     let tmp = TempDir::new().unwrap();
     let wb = tmp.path().join("book.xlsx");
     write_workbook(&wb, &[("xl/workbook.xml", SIMPLE_WORKBOOK_XML.as_bytes())]);

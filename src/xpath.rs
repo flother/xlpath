@@ -154,7 +154,6 @@ pub enum QueryError {
 pub struct Query {
     expression: String,
     namespaces: Namespaces,
-    default_ns: Option<String>,
 }
 
 impl Query {
@@ -165,7 +164,6 @@ impl Query {
     pub fn compile(
         expr: &str,
         user_ns: &[(String, String)],
-        default_ns: Option<&str>,
     ) -> Result<Self, QueryError> {
         // Parse once up-front to reject bad expressions early, then discard the
         // parsed tree; each evaluation will parse afresh.
@@ -183,7 +181,6 @@ impl Query {
         Ok(Self {
             expression: expr.to_string(),
             namespaces,
-            default_ns: default_ns.map(|s| s.to_string()),
         })
     }
 
@@ -217,26 +214,11 @@ impl Query {
             ctx.set_namespace(prefix, uri);
         }
 
-        // If --default-ns was set, look at the root element's default xmlns and
-        // bind it to the chosen prefix for this document's evaluation. Without
-        // this, XPath 1.0 cannot select nodes whose namespace has no declared
-        // prefix (the common OOXML case).
-        let mut uri_to_prefix: Vec<(String, String)> = self
+        let uri_to_prefix: Vec<(String, String)> = self
             .namespaces
             .effective()
             .map(|(p, u)| (u.to_string(), p.to_string()))
             .collect();
-        if let Some(prefix) = &self.default_ns {
-            if let Some(root) = doc.root().children().into_iter().find_map(|c| match c {
-                sxd_document::dom::ChildOfRoot::Element(e) => Some(e),
-                _ => None,
-            }) {
-                if let Some(default_uri) = root.default_namespace_uri() {
-                    ctx.set_namespace(prefix, default_uri);
-                    uri_to_prefix.push((default_uri.to_string(), prefix.clone()));
-                }
-            }
-        }
 
         let value = xpath
             .evaluate(&ctx, doc.root())
@@ -467,7 +449,7 @@ mod tests {
     <sheet name="Beta" sheetId="2" />
   </sheets>
 </workbook>"#;
-        let q = Query::compile("//x:sheet/@name", &[], None).unwrap();
+        let q = Query::compile("//x:sheet/@name", &[]).unwrap();
         let matches: Vec<String> = q
             .evaluate_xml(xml)
             .unwrap()
@@ -483,7 +465,7 @@ mod tests {
         use super::Query;
 
         let xml = "<root><a>hello</a><a>world</a></root>";
-        let q = Query::compile("//a", &[], None).unwrap();
+        let q = Query::compile("//a", &[]).unwrap();
         let values: Vec<String> = q
             .evaluate_xml(xml)
             .unwrap()
@@ -500,7 +482,7 @@ mod tests {
 
         let xml = r#"<r:thing xmlns:r="urn:example:custom"><r:name>ok</r:name></r:thing>"#;
         let bindings = vec![("my".to_string(), "urn:example:custom".to_string())];
-        let q = Query::compile("//my:name", &bindings, None).unwrap();
+        let q = Query::compile("//my:name", &bindings).unwrap();
         let values: Vec<String> = q
             .evaluate_xml(xml)
             .unwrap()
@@ -512,30 +494,11 @@ mod tests {
     }
 
     #[test]
-    fn default_ns_flag_binds_root_xmlns_to_chosen_prefix() {
-        use super::Query;
-
-        let xml = r#"<?xml version="1.0"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <name>Default</name>
-</workbook>"#;
-        let q = Query::compile("//ws:name", &[], Some("ws")).unwrap();
-        let values: Vec<String> = q
-            .evaluate_xml(xml)
-            .unwrap()
-            .into_iter()
-            .map(|m| m.value)
-            .collect();
-
-        assert_eq!(values, vec!["Default"]);
-    }
-
-    #[test]
     fn atomic_result_is_returned_as_a_single_match() {
         use super::Query;
 
         let xml = "<root><a/><a/><a/></root>";
-        let q = Query::compile("count(//a)", &[], None).unwrap();
+        let q = Query::compile("count(//a)", &[]).unwrap();
         let values: Vec<String> = q
             .evaluate_xml(xml)
             .unwrap()
@@ -550,7 +513,7 @@ mod tests {
     fn invalid_xpath_is_rejected_at_compile_time() {
         use super::Query;
 
-        let err = Query::compile("//[", &[], None);
+        let err = Query::compile("//[", &[]);
         assert!(err.is_err());
     }
 
@@ -558,7 +521,7 @@ mod tests {
     fn malformed_xml_is_reported() {
         use super::Query;
 
-        let q = Query::compile("//a", &[], None).unwrap();
+        let q = Query::compile("//a", &[]).unwrap();
         let err = q.evaluate_xml("<broken");
         assert!(err.is_err());
     }
@@ -568,7 +531,7 @@ mod tests {
         use super::{EvalOptions, Query};
 
         let xml = r#"<root><a x="1"/></root>"#;
-        let q = Query::compile("//a", &[], None).unwrap();
+        let q = Query::compile("//a", &[]).unwrap();
         let matches = q
             .evaluate_xml_with(xml, EvalOptions { as_tag: true })
             .unwrap();
@@ -586,7 +549,7 @@ mod tests {
 <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart">
   <c:chart />
 </c:chartSpace>"#;
-        let q = Query::compile("//c:chart", &[], None).unwrap();
+        let q = Query::compile("//c:chart", &[]).unwrap();
         let matches = q
             .evaluate_xml_with(xml, EvalOptions { as_tag: true })
             .unwrap();
@@ -600,7 +563,7 @@ mod tests {
         use super::{EvalOptions, Query};
 
         let xml = r#"<root><a note="a &amp; b &lt; c &quot;d&quot;"/></root>"#;
-        let q = Query::compile("//a", &[], None).unwrap();
+        let q = Query::compile("//a", &[]).unwrap();
         let matches = q
             .evaluate_xml_with(xml, EvalOptions { as_tag: true })
             .unwrap();
@@ -620,7 +583,7 @@ mod tests {
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <sheets><sheet name="Alpha" sheetId="1"/></sheets>
 </workbook>"#;
-        let q = Query::compile("//x:sheet/@name", &[], None).unwrap();
+        let q = Query::compile("//x:sheet/@name", &[]).unwrap();
         let matches = q
             .evaluate_xml_with(xml, EvalOptions { as_tag: true })
             .unwrap();
@@ -639,7 +602,7 @@ mod tests {
         use super::{EvalOptions, Query};
 
         let xml = r#"<root><a><b/>text<c/></a></root>"#;
-        let q = Query::compile("//a", &[], None).unwrap();
+        let q = Query::compile("//a", &[]).unwrap();
         let matches = q
             .evaluate_xml_with(xml, EvalOptions { as_tag: true })
             .unwrap();
@@ -683,7 +646,7 @@ mod tests {
   <Override PartName="/xl/charts/chart1.xml"
             ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>
 </Types>"#;
-        let q = Query::compile("//ct:Override/@PartName", &[], None).unwrap();
+        let q = Query::compile("//ct:Override/@PartName", &[]).unwrap();
         let values: Vec<String> = q
             .evaluate_xml(xml)
             .unwrap()

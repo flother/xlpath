@@ -85,7 +85,6 @@ Options
 | `--include <GLOB>`        | Only evaluate matching zip-internal paths. Repeatable.                                                                                                                                                                             |
 | `--exclude <GLOB>`        | Skip matching zip-internal paths. Repeatable.                                                                                                                                                                                      |
 | `--ns <PREFIX=URI>`       | Register (or override) a namespace prefix. Repeatable.                                                                                                                                                                             |
-| `--default-ns <PREFIX>`   | Bind the document's default `xmlns` to this prefix.                                                                                                                                                                                |
 | `-c`, `--count`           | Print `file:N` per matching workbook instead of each match.                                                                                                                                                                        |
 | `--only-filenames`        | Print only the names of workbooks with at least one match.                                                                                                                                                                         |
 | `--tag`                   | Add the matching element's synthetic self-closing tag to the output prefix (e.g. `<x:sheet name="A" sheetId="1"/>`). For element matches, the tag is the element itself; for attribute and text matches, it is the parent element. |
@@ -146,24 +145,8 @@ work out of the box:
 | `x15`       | `http://schemas.microsoft.com/office/spreadsheetml/2010/11/main`      |
 | `xr`        | `http://schemas.microsoft.com/office/spreadsheetml/2014/revision`     |
 
-User `--ns` pairs apply after the defaults and take precedence.
-
-### The default-namespace quirk
-
-OOXML files usually declare a default namespace on the root element. For example, `xl/workbook.xml`
-has `xmlns=".../spreadsheetml/2006/main"`. XPath 1.0 has no way to select an unprefixed default
-namespace, so `//workbook` matches nothing. `xlpath` offers two ways to make your life a little
-easier:
-
-1. Use a pre-registered prefix like `//x:workbook`. This asks for `workbook` in the `spreadsheetml`
-   URI specifically, because `x` is pre-registered to that URI (see table above). If you need a
-   namespace not included in the table, extend using `--ns`.
-2. Pass `--default-ns x` together with `//x:workbook`. For each document, `xlpath` binds that
-   document's root `xmlns` (whatever URI it happens to be) to `x` before evaluation.
-
-Use the first option when you care which namespace you're matching; pick the second when you don't
-know the URI (custom files, embedded XML) or want a single query that survives heterogeneous
-documents.
+XPath 1.0 has no way to select nodes in an unprefixed default namespace, so `//workbook` matches
+nothing against a document with `xmlns=".../spreadsheetml/2006/main"`. Use one of these pre-registered prefix (e.g. `//x:workbook`) or register one yourself with `--ns`. Your namespaces are applied after the defaults and take precedence.
 
 Exit codes
 ----------

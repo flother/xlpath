@@ -12,8 +12,8 @@ use clap::{ArgAction, Parser};
 pub struct Cli {
     /// XPath 1.0 expression to evaluate against each XML part.
     ///
-    /// Note: XPath 1.0 cannot match an unprefixed default namespace. Either use
-    /// a registered prefix (e.g. `//x:workbook`) or pass `--default-ns`.
+    /// Note: XPath 1.0 cannot match an unprefixed default namespace. Use a
+    /// registered prefix (e.g. `//x:workbook`) or `--ns` to add one.
     #[arg(value_name = "XPATH", long_help = XPATH_LONG_HELP)]
     pub xpath: String,
 
@@ -40,11 +40,6 @@ pub struct Cli {
     /// after the auto-registered OOXML defaults (last-wins).
     #[arg(long = "ns", value_name = "PREFIX=URI", action = ArgAction::Append)]
     pub namespaces: Vec<String>,
-
-    /// Bind the root element's default xmlns (if any) to this prefix for each
-    /// document.
-    #[arg(long = "default-ns", value_name = "PREFIX")]
-    pub default_ns: Option<String>,
 
     /// Only print a count of matches per file.
     #[arg(short = 'c', long, conflicts_with_all = ["only_filenames", "json"])]
@@ -129,8 +124,8 @@ impl Cli {
 const XPATH_LONG_HELP: &str = "\
 XPath 1.0 expression to evaluate against each XML part.
 
-Note: XPath 1.0 cannot match an unprefixed default namespace. Either use a
-registered prefix (e.g. `//x:workbook`) or pass `--default-ns`.
+Note: XPath 1.0 cannot match an unprefixed default namespace. Use a
+registered prefix (e.g. `//x:workbook`) or `--ns` to add one.
 
 Pre-registered namespace prefixes (override or extend with `--ns`):
 

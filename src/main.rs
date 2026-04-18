@@ -48,7 +48,7 @@ fn run() -> Result<ExitCode> {
     let mut cli = Cli::parse();
 
     let ns_pairs = parse_namespace_args(&cli.namespaces)?;
-    let query = Query::compile(&cli.xpath, &ns_pairs, cli.default_ns.as_deref())
+    let query = Query::compile(&cli.xpath, &ns_pairs)
         .map_err(|e| anyhow!("{}", e))
         .context("failed to compile XPath expression")?;
 
