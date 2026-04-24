@@ -319,7 +319,11 @@ fn json_mode_outputs_one_ndjson_object_per_match() {
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
     let lines: Vec<&str> = stdout.lines().collect();
-    assert_eq!(lines.len(), 2, "expected one line per match; got:\n{stdout}");
+    assert_eq!(
+        lines.len(),
+        2,
+        "expected one line per match; got:\n{stdout}"
+    );
     assert!(
         lines[0].contains(r#""part":"xl/workbook.xml""#),
         "stdout was: {stdout}"

@@ -165,10 +165,7 @@ impl Query {
     /// with the OOXML defaults and extended with the caller's overrides. The
     /// expression is stored as a string; each evaluation re-parses it (see the
     /// struct-level doc for why).
-    pub fn compile(
-        expr: &str,
-        user_ns: &[(String, String)],
-    ) -> Result<Self, QueryError> {
+    pub fn compile(expr: &str, user_ns: &[(String, String)]) -> Result<Self, QueryError> {
         // Parse once up-front to reject bad expressions early, then discard the
         // parsed tree; each evaluation will parse afresh.
         let factory = Factory::new();

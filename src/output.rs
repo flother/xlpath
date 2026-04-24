@@ -356,7 +356,10 @@ mod tests {
         let path = PathBuf::from("book.xlsx");
         let parts = vec![(
             "xl/workbook.xml".to_string(),
-            vec![m(MatchKind::Attribute, "Sheet1"), m(MatchKind::Attribute, "Sheet2")],
+            vec![
+                m(MatchKind::Attribute, "Sheet1"),
+                m(MatchKind::Attribute, "Sheet2"),
+            ],
         )];
 
         let out = format_file(OutputMode::Json, false, false, &path, &parts);
