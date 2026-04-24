@@ -140,6 +140,7 @@ Pre-registered namespace prefixes (override or extend with `--ns`):
   x14      http://schemas.microsoft.com/office/spreadsheetml/2009/9/main
   x15      http://schemas.microsoft.com/office/spreadsheetml/2010/11/main
   xr       http://schemas.microsoft.com/office/spreadsheetml/2014/revision
+  xp       http://schemas.openxmlformats.org/officeDocument/2006/extended-properties
 ";
 
 #[cfg(test)]

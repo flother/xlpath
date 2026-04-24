@@ -54,6 +54,10 @@ pub const OOXML_DEFAULTS: &[(&str, &str)] = &[
         "xr",
         "http://schemas.microsoft.com/office/spreadsheetml/2014/revision",
     ),
+    (
+        "xp",
+        "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties",
+    ),
 ];
 
 /// A prefix → URI registry applied to every XPath evaluation. Built from the
