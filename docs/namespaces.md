@@ -18,17 +18,17 @@ built-in prefix with `--ns` overrides it.
 Pre-registered prefixes
 -----------------------
 
-| Prefix      | URI                                                                         |
-| ----------- | --------------------------------------------------------------------------- |
-| `x`, `main` | `http://schemas.openxmlformats.org/spreadsheetml/2006/main`                 |
-| `r`         | `http://schemas.openxmlformats.org/officeDocument/2006/relationships`       |
-| `c`         | `http://schemas.openxmlformats.org/drawingml/2006/chart`                    |
-| `a`         | `http://schemas.openxmlformats.org/drawingml/2006/main`                     |
-| `xdr`       | `http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing`       |
-| `mc`        | `http://schemas.openxmlformats.org/markup-compatibility/2006`               |
-| `rel`       | `http://schemas.openxmlformats.org/package/2006/relationships`              |
-| `ct`        | `http://schemas.openxmlformats.org/package/2006/content-types`              |
-| `x14`       | `http://schemas.microsoft.com/office/spreadsheetml/2009/9/main`             |
-| `x15`       | `http://schemas.microsoft.com/office/spreadsheetml/2010/11/main`            |
-| `xr`        | `http://schemas.microsoft.com/office/spreadsheetml/2014/revision`           |
-| `xp`        | `http://schemas.openxmlformats.org/officeDocument/2006/extended-properties` |
+| Prefix | URI                                                                         |
+| ------ | --------------------------------------------------------------------------- |
+| `x`    | `http://schemas.openxmlformats.org/spreadsheetml/2006/main`                 |
+| `r`    | `http://schemas.openxmlformats.org/officeDocument/2006/relationships`       |
+| `c`    | `http://schemas.openxmlformats.org/drawingml/2006/chart`                    |
+| `a`    | `http://schemas.openxmlformats.org/drawingml/2006/main`                     |
+| `xdr`  | `http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing`       |
+| `mc`   | `http://schemas.openxmlformats.org/markup-compatibility/2006`               |
+| `rel`  | `http://schemas.openxmlformats.org/package/2006/relationships`              |
+| `ct`   | `http://schemas.openxmlformats.org/package/2006/content-types`              |
+| `x14`  | `http://schemas.microsoft.com/office/spreadsheetml/2009/9/main`             |
+| `x15`  | `http://schemas.microsoft.com/office/spreadsheetml/2010/11/main`            |
+| `xr`   | `http://schemas.microsoft.com/office/spreadsheetml/2014/revision`           |
+| `xp`   | `http://schemas.openxmlformats.org/officeDocument/2006/extended-properties` |

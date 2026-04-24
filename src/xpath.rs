@@ -14,10 +14,6 @@ pub const OOXML_DEFAULTS: &[(&str, &str)] = &[
         "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
     ),
     (
-        "main",
-        "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
-    ),
-    (
         "r",
         "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
     ),
@@ -365,9 +361,7 @@ fn escape_attr_value(s: &str) -> String {
 }
 
 fn lookup_prefix<'a>(uri_to_prefix: &'a [(String, String)], uri: &str) -> Option<&'a str> {
-    // Forward search — the first registered prefix for a URI wins. Our defaults
-    // list places canonical prefixes (`x`, `r`, `c` …) ahead of any aliases
-    // (`main`), so the canonical name is chosen for output.
+    // Forward search --- the first registered prefix for a URI wins.
     uri_to_prefix
         .iter()
         .find(|(u, _)| u == uri)
