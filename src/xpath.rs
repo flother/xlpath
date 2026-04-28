@@ -139,6 +139,8 @@ pub enum QueryError {
     InvalidExpression(String),
     #[error("unsupported XPath expression")]
     UnsupportedExpression,
+    #[error("unknown namespace prefix: {0}")]
+    UnknownNamespacePrefix(String),
     #[error("malformed XML: {0}")]
     MalformedXml(String),
 }
@@ -151,6 +153,7 @@ pub enum QueryError {
 /// across rayon workers would require `unsafe impl Sync`. Parsing is cheap
 /// relative to reading the part and parsing the XML, so the trade-off
 /// favours simplicity here.
+#[derive(Debug)]
 pub struct Query {
     expression: String,
     namespaces: Namespaces,
@@ -173,6 +176,14 @@ impl Query {
         let mut namespaces = Namespaces::with_defaults();
         for (p, u) in user_ns {
             namespaces.override_with(p, u);
+        }
+
+        // sxd-xpath panics when it has no URI for a namespace prefix. Catch
+        // that here callers get a clean error rather than a thread panic.
+        for prefix in extract_namespace_prefixes(expr) {
+            if namespaces.get(&prefix).is_none() {
+                return Err(QueryError::UnknownNamespacePrefix(prefix));
+            }
         }
 
         Ok(Self {
@@ -386,6 +397,54 @@ fn format_number(n: f64) -> String {
     }
 }
 
+/// Extract every namespace prefix used in an XPath expression. Skips over
+/// string literals to avoid false positives from text like `"foo:bar"`. Matches
+/// `NCName:` only when the colon is not doubled (which would indicate an axis
+/// separator such as `child::`).
+fn extract_namespace_prefixes(expr: &str) -> Vec<String> {
+    let mut prefixes = Vec::new();
+    let mut iter = expr.chars().peekable();
+
+    while let Some(ch) = iter.next() {
+        // Skip string literals so "foo:bar" doesn't look like a prefix.
+        if ch == '"' || ch == '\'' {
+            for c in iter.by_ref() {
+                if c == ch {
+                    break;
+                }
+            }
+            continue;
+        }
+
+        if is_ncname_start(ch) {
+            let mut name = String::new();
+            name.push(ch);
+            while iter.peek().map_or(false, |&c| is_ncname_continue(c)) {
+                name.push(iter.next().unwrap());
+            }
+            // A single `:` (not `::`) means this NCName is a namespace prefix.
+            if iter.peek() == Some(&':') {
+                iter.next(); // consume the `:`
+                if iter.peek() != Some(&':') {
+                    if !prefixes.contains(&name) {
+                        prefixes.push(name);
+                    }
+                }
+            }
+        }
+    }
+
+    prefixes
+}
+
+fn is_ncname_start(c: char) -> bool {
+    c.is_ascii_alphabetic() || c == '_'
+}
+
+fn is_ncname_continue(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')
+}
+
 fn collapse_whitespace(s: &str) -> String {
     let collapsed: String = s
         .chars()
@@ -510,6 +569,34 @@ mod tests {
 
         let err = Query::compile("//[", &[]);
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn unregistered_namespace_prefix_is_rejected_at_compile_time() {
+        use super::{Query, QueryError};
+
+        let err = Query::compile("//doesnotexist:checksum", &[]).unwrap_err();
+        assert!(
+            matches!(err, QueryError::UnknownNamespacePrefix(ref p) if p == "doesnotexist"),
+            "expected UnknownNamespacePrefix(\"doesnotexist\"), got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn user_supplied_namespace_prefix_is_accepted() {
+        use super::Query;
+
+        let bindings = vec![("custom".to_string(), "urn:example:ns".to_string())];
+        assert!(Query::compile("//custom:thing", &bindings).is_ok());
+    }
+
+    #[test]
+    fn prefix_lookalike_inside_string_literal_is_not_rejected() {
+        use super::Query;
+
+        // "unknown:thing" is a string value, not a name test — no namespace
+        // lookup should occur and compilation should succeed.
+        assert!(Query::compile(r#"//x:sheet[@name = "unknown:thing"]"#, &[]).is_ok());
     }
 
     #[test]
