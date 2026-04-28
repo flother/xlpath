@@ -419,16 +419,14 @@ fn extract_namespace_prefixes(expr: &str) -> Vec<String> {
         if is_ncname_start(ch) {
             let mut name = String::new();
             name.push(ch);
-            while iter.peek().map_or(false, |&c| is_ncname_continue(c)) {
+            while iter.peek().is_some_and(|&c| is_ncname_continue(c)) {
                 name.push(iter.next().unwrap());
             }
             // A single `:` (not `::`) means this NCName is a namespace prefix.
             if iter.peek() == Some(&':') {
                 iter.next(); // consume the `:`
-                if iter.peek() != Some(&':') {
-                    if !prefixes.contains(&name) {
-                        prefixes.push(name);
-                    }
+                if iter.peek() != Some(&':') && !prefixes.contains(&name) {
+                    prefixes.push(name);
                 }
             }
         }
