@@ -120,13 +120,14 @@ fn is_ole2_header(bytes: &[u8]) -> bool {
 
 fn build(patterns: &[String]) -> Result<Option<GlobSet>, globset::Error> {
     if patterns.is_empty() {
-        return Ok(None);
+        Ok(None)
+    } else {
+        let mut b = GlobSetBuilder::new();
+        for p in patterns {
+            b.add(Glob::new(p)?);
+        }
+        Ok(Some(b.build()?))
     }
-    let mut b = GlobSetBuilder::new();
-    for p in patterns {
-        b.add(Glob::new(p)?);
-    }
-    Ok(Some(b.build()?))
 }
 
 #[cfg(test)]
