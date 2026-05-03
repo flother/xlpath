@@ -29,12 +29,13 @@ pub fn format_file(
 }
 
 fn format_minimal(no_filename: bool, no_path: bool, path: &Path, parts: &[PartMatches]) -> String {
+    let file = path.display().to_string();
     let mut out = String::new();
     for (part, matches) in parts {
         for m in matches {
             let mut prefix = String::new();
             if !no_filename {
-                prefix.push_str(&path.display().to_string());
+                prefix.push_str(&file);
                 prefix.push(':');
             }
             if !no_path {
