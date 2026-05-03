@@ -103,8 +103,9 @@ fn read_up_to(reader: &mut impl Read, buf: &mut [u8]) -> std::io::Result<usize> 
 }
 
 fn is_xml_part(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    lower.ends_with(".xml") || lower.ends_with(".rels")
+    let b = name.as_bytes();
+    (b.len() >= 4 && b[b.len() - 4..].eq_ignore_ascii_case(b".xml"))
+        || (b.len() >= 5 && b[b.len() - 5..].eq_ignore_ascii_case(b".rels"))
 }
 
 /// Eight-byte signature at the start of every OLE2 compound document. Microsoft
