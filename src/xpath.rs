@@ -448,20 +448,19 @@ fn is_ncname_continue(c: char) -> bool {
 
 fn collapse_whitespace(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
-    let mut prev_space = false;
+    let mut prev_space = true; // Start as true to suppress any leading whitespace
     for c in s.chars() {
-        let is_space = matches!(c, ' ' | '\n' | '\r' | '\t');
-        if is_space {
-            if !prev_space {
-                out.push(' ');
-            }
+        if matches!(c, ' ' | '\n' | '\r' | '\t') {
             prev_space = true;
         } else {
+            if prev_space && !out.is_empty() {
+                out.push(' ');
+            }
             out.push(c);
             prev_space = false;
         }
     }
-    out.trim().to_string()
+    out
 }
 
 #[cfg(test)]
@@ -729,5 +728,45 @@ mod tests {
             .collect();
 
         assert_eq!(values, vec!["/xl/workbook.xml", "/xl/charts/chart1.xml"]);
+    }
+
+    #[test]
+    fn collapse_whitespace_interior_runs() {
+        assert_eq!(super::collapse_whitespace("a  b\t\tc"), "a b c");
+    }
+
+    #[test]
+    fn collapse_whitespace_leading() {
+        assert_eq!(super::collapse_whitespace("  hello"), "hello");
+    }
+
+    #[test]
+    fn collapse_whitespace_trailing() {
+        assert_eq!(super::collapse_whitespace("hello  "), "hello");
+    }
+
+    #[test]
+    fn collapse_whitespace_leading_and_trailing() {
+        assert_eq!(super::collapse_whitespace("\t hello world \n"), "hello world");
+    }
+
+    #[test]
+    fn collapse_whitespace_only_whitespace() {
+        assert_eq!(super::collapse_whitespace("   "), "");
+    }
+
+    #[test]
+    fn collapse_whitespace_empty() {
+        assert_eq!(super::collapse_whitespace(""), "");
+    }
+
+    #[test]
+    fn collapse_whitespace_no_whitespace() {
+        assert_eq!(super::collapse_whitespace("hello"), "hello");
+    }
+
+    #[test]
+    fn collapse_whitespace_mixed_newlines() {
+        assert_eq!(super::collapse_whitespace("a\n\r\nb"), "a b");
     }
 }
