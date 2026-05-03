@@ -65,8 +65,20 @@ fn run() -> Result<ExitCode> {
         std::mem::take(&mut cli.paths)
     };
     let stdin = io::stdin();
-    let paths = walk::collect(&inputs, BufReader::new(stdin.lock()), cli.follow)
-        .context("failed to resolve input paths")?;
+    let mut walk_warnings = String::new();
+    let paths = walk::collect(&inputs, BufReader::new(stdin.lock()), cli.follow, |e| {
+        let msg = match e.path() {
+            Some(p) => format!(
+                "xlpath: {}: {}\n",
+                p.display(),
+                e.io_error()
+                    .map_or_else(|| e.to_string(), |ie| ie.to_string())
+            ),
+            None => format!("xlpath: {e}\n"),
+        };
+        walk_warnings.push_str(&msg);
+    })
+    .context("failed to resolve input paths")?;
 
     // Explicit thread count if given, otherwise rayon's default (logical CPUs).
     if let Some(n) = cli.threads {
@@ -83,6 +95,11 @@ fn run() -> Result<ExitCode> {
     let writer = Writer::new();
     let match_count = AtomicUsize::new(0);
     let had_error = AtomicBool::new(false);
+
+    if !walk_warnings.is_empty() {
+        had_error.store(true, Ordering::Relaxed);
+        writer.emit_err(&walk_warnings);
+    }
 
     let mode = cli.output_mode();
     let no_filename = cli.no_filename;

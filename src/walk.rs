@@ -18,7 +18,16 @@ pub const OOXML_EXTENSIONS: &[&str] = &["xlsx", "xlsm", "xltx", "xltm"];
 ///
 /// Each resolved path is kept as-is — no canonicalisation — so the output the
 /// user sees refers to the path they asked about.
-pub fn collect<R: BufRead>(paths: &[PathBuf], stdin: R, follow: bool) -> io::Result<Vec<PathBuf>> {
+///
+/// `on_walk_error` is called for each non-fatal error encountered during
+/// directory traversal (e.g. permission denied, symlink loops). The walk
+/// continues after each such error.
+pub fn collect<R: BufRead, F: FnMut(walkdir::Error)>(
+    paths: &[PathBuf],
+    stdin: R,
+    follow: bool,
+    mut on_walk_error: F,
+) -> io::Result<Vec<PathBuf>> {
     let mut out = Vec::new();
     let mut stdin = Some(stdin);
 
@@ -34,27 +43,41 @@ pub fn collect<R: BufRead>(paths: &[PathBuf], stdin: R, follow: bool) -> io::Res
                     if trimmed.is_empty() {
                         continue;
                     }
-                    push_from_input(&PathBuf::from(trimmed), follow, &mut out);
+                    push_from_input(
+                        &PathBuf::from(trimmed),
+                        follow,
+                        &mut out,
+                        &mut on_walk_error,
+                    );
                 }
             }
         } else {
-            push_from_input(p, follow, &mut out);
+            push_from_input(p, follow, &mut out, &mut on_walk_error);
         }
     }
 
     Ok(out)
 }
 
-fn push_from_input(input: &Path, follow: bool, out: &mut Vec<PathBuf>) {
+fn push_from_input(
+    input: &Path,
+    follow: bool,
+    out: &mut Vec<PathBuf>,
+    on_walk_error: &mut dyn FnMut(walkdir::Error),
+) {
     if input.is_dir() {
         for entry in WalkDir::new(input).follow_links(follow) {
-            let Ok(entry) = entry else { continue };
-            if !entry.file_type().is_file() {
-                continue;
-            }
-            let path = entry.into_path();
-            if is_spreadsheet(&path) && !is_lock_file(&path) {
-                out.push(path);
+            match entry {
+                Err(e) => on_walk_error(e),
+                Ok(entry) => {
+                    if !entry.file_type().is_file() {
+                        continue;
+                    }
+                    let path = entry.into_path();
+                    if is_spreadsheet(&path) && !is_lock_file(&path) {
+                        out.push(path);
+                    }
+                }
             }
         }
     } else {
@@ -111,7 +134,7 @@ mod tests {
         let path = dir.path().join("book.xlsx");
         touch(&path);
 
-        let result = collect(std::slice::from_ref(&path), empty_stdin(), false).unwrap();
+        let result = collect(std::slice::from_ref(&path), empty_stdin(), false, |_| {}).unwrap();
 
         assert_eq!(result, vec![path]);
     }
@@ -130,7 +153,7 @@ mod tests {
             touch(p);
         }
 
-        let result = collect(&[dir.path().to_path_buf()], empty_stdin(), false).unwrap();
+        let result = collect(&[dir.path().to_path_buf()], empty_stdin(), false, |_| {}).unwrap();
 
         assert_eq!(sorted(result), sorted(vec![a, b, c, d]));
     }
@@ -143,7 +166,7 @@ mod tests {
         touch(&real);
         touch(&lock);
 
-        let result = collect(&[dir.path().to_path_buf()], empty_stdin(), false).unwrap();
+        let result = collect(&[dir.path().to_path_buf()], empty_stdin(), false, |_| {}).unwrap();
 
         assert_eq!(result, vec![real]);
     }
@@ -158,7 +181,7 @@ mod tests {
         touch(&lock);
         touch(&odd);
 
-        let result = collect(&[lock.clone(), odd.clone()], empty_stdin(), false).unwrap();
+        let result = collect(&[lock.clone(), odd.clone()], empty_stdin(), false, |_| {}).unwrap();
 
         assert_eq!(result, vec![lock, odd]);
     }
@@ -171,7 +194,7 @@ mod tests {
         touch(&upper);
         touch(&mixed);
 
-        let result = collect(&[dir.path().to_path_buf()], empty_stdin(), false).unwrap();
+        let result = collect(&[dir.path().to_path_buf()], empty_stdin(), false, |_| {}).unwrap();
 
         assert_eq!(sorted(result), sorted(vec![upper, mixed]));
     }
@@ -191,7 +214,7 @@ mod tests {
         writeln!(buf).unwrap();
         let stdin = io::Cursor::new(buf);
 
-        let result = collect(&[PathBuf::from("-")], stdin, false).unwrap();
+        let result = collect(&[PathBuf::from("-")], stdin, false, |_| {}).unwrap();
 
         assert_eq!(result, vec![a, b]);
     }
@@ -215,7 +238,7 @@ mod tests {
             dir.path().join("subdir"),
             PathBuf::from("-"),
         ];
-        let result = collect(&args, stdin, false).unwrap();
+        let result = collect(&args, stdin, false, |_| {}).unwrap();
 
         assert_eq!(sorted(result), sorted(vec![explicit, in_dir, from_stdin]));
     }
@@ -231,7 +254,7 @@ mod tests {
         touch(&real.join("a.xlsx"));
         std::os::unix::fs::symlink(&real, root.join("link")).unwrap();
 
-        let result = collect(std::slice::from_ref(&root), empty_stdin(), false).unwrap();
+        let result = collect(std::slice::from_ref(&root), empty_stdin(), false, |_| {}).unwrap();
 
         assert!(result.is_empty(), "expected no files, got {result:?}");
     }
@@ -247,8 +270,35 @@ mod tests {
         touch(&real.join("a.xlsx"));
         std::os::unix::fs::symlink(&real, root.join("link")).unwrap();
 
-        let result = collect(std::slice::from_ref(&root), empty_stdin(), true).unwrap();
+        let result = collect(std::slice::from_ref(&root), empty_stdin(), true, |_| {}).unwrap();
 
         assert_eq!(result, vec![root.join("link").join("a.xlsx")]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reports_permission_error_via_callback() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = TempDir::new().unwrap();
+        let locked = dir.path().join("locked");
+        fs::create_dir_all(&locked).unwrap();
+        touch(&locked.join("hidden.xlsx"));
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+
+        let mut errors: Vec<String> = Vec::new();
+        let result = collect(
+            std::slice::from_ref(&dir.path().to_path_buf()),
+            empty_stdin(),
+            false,
+            |e| errors.push(e.to_string()),
+        )
+        .unwrap();
+
+        // Restore so TempDir can clean up.
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert!(result.is_empty(), "expected no files, got {result:?}");
+        assert!(!errors.is_empty(), "expected at least one walk error");
     }
 }
