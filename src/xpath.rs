@@ -222,11 +222,14 @@ impl Query {
             ctx.set_namespace(prefix, uri);
         }
 
-        let uri_to_prefix: Vec<(String, String)> = self
-            .namespaces
-            .effective()
-            .map(|(p, u)| (u.to_string(), p.to_string()))
-            .collect();
+        let uri_to_prefix: Vec<(String, String)> = if opts.as_tag {
+            self.namespaces
+                .effective()
+                .map(|(p, u)| (u.to_string(), p.to_string()))
+                .collect()
+        } else {
+            Vec::new()
+        };
 
         let value = xpath
             .evaluate(&ctx, doc.root())
