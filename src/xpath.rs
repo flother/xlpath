@@ -447,22 +447,13 @@ fn is_ncname_continue(c: char) -> bool {
 }
 
 fn collapse_whitespace(s: &str) -> String {
-    let collapsed: String = s
-        .chars()
-        .map(|c| {
-            if c == '\n' || c == '\r' || c == '\t' {
-                ' '
-            } else {
-                c
-            }
-        })
-        .collect();
-    let mut out = String::with_capacity(collapsed.len());
+    let mut out = String::with_capacity(s.len());
     let mut prev_space = false;
-    for c in collapsed.chars() {
-        if c == ' ' {
+    for c in s.chars() {
+        let is_space = matches!(c, ' ' | '\n' | '\r' | '\t');
+        if is_space {
             if !prev_space {
-                out.push(c);
+                out.push(' ');
             }
             prev_space = true;
         } else {
