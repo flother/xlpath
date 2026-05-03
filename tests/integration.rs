@@ -59,6 +59,33 @@ fn includes_filter_narrows_to_chart_parts() {
 }
 
 #[test]
+fn exclude_filter_drops_matching_parts() {
+    let tmp = TempDir::new().unwrap();
+    let wb = tmp.path().join("charts.xlsx");
+    write_workbook(
+        &wb,
+        &[
+            ("xl/workbook.xml", SIMPLE_WORKBOOK_XML.as_bytes()),
+            ("xl/charts/chart1.xml", CHART_XML.as_bytes()),
+        ],
+    );
+
+    let out = xlpath()
+        .args(["//c:chart", "--exclude", "xl/charts/*.xml"])
+        .arg(&wb)
+        .output()
+        .unwrap();
+
+    // No c:chart nodes exist in workbook.xml, so exit code is 1 (no matches).
+    assert_eq!(out.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !stdout.contains("xl/charts/chart1.xml"),
+        "stdout was: {stdout}"
+    );
+}
+
+#[test]
 fn count_mode_reports_per_file_totals() {
     let tmp = TempDir::new().unwrap();
     let wb = tmp.path().join("charts.xlsx");
