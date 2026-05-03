@@ -194,6 +194,9 @@ fn parse_namespace_args(args: &[String]) -> Result<Vec<(String, String)>> {
         if prefix.is_empty() {
             return Err(anyhow!("--ns prefix may not be empty: `{a}`"));
         }
+        if uri.is_empty() {
+            return Err(anyhow!("--ns URI may not be empty: `{a}`"));
+        }
         out.push((prefix.to_string(), uri.to_string()));
     }
     Ok(out)

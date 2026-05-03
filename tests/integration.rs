@@ -431,6 +431,15 @@ fn long_help_lists_preregistered_ooxml_namespaces() {
 }
 
 #[test]
+fn ns_flag_rejects_empty_uri() {
+    xlpath()
+        .args(["//x:sheet", "--ns", "x="])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("URI may not be empty"));
+}
+
+#[test]
 fn ns_flag_registers_user_namespace() {
     let tmp = TempDir::new().unwrap();
     let wb = tmp.path().join("custom.xlsx");
