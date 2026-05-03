@@ -94,22 +94,19 @@ fn run() -> Result<ExitCode> {
         let mut part_warnings = String::new();
 
         let result = xlsx::process_parts(path, &filter, |part_name, data| {
-            let xml = match std::str::from_utf8(data) {
-                Ok(s) => s,
-                Err(_) => {
-                    part_warnings.push_str(
-                        &FileWarning {
-                            path: path.clone(),
-                            reason: SkipReason::MalformedXml {
-                                part: part_name.to_string(),
-                                message: "not valid UTF-8".to_string(),
-                            },
-                        }
-                        .format(),
-                    );
-                    had_error.store(true, Ordering::Relaxed);
-                    return;
-                }
+            let Ok(xml) = std::str::from_utf8(data) else {
+                part_warnings.push_str(
+                    &FileWarning {
+                        path: path.clone(),
+                        reason: SkipReason::MalformedXml {
+                            part: part_name.to_string(),
+                            message: "not valid UTF-8".to_string(),
+                        },
+                    }
+                    .format(),
+                );
+                had_error.store(true, Ordering::Relaxed);
+                return;
             };
 
             match query.evaluate_xml_with(xml, eval_opts) {
