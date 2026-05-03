@@ -115,7 +115,7 @@ fn is_xml_part(name: &str) -> bool {
 const OLE2_MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
 
 fn is_ole2_header(bytes: &[u8]) -> bool {
-    bytes.len() >= OLE2_MAGIC.len() && bytes[..OLE2_MAGIC.len()] == OLE2_MAGIC
+    bytes.starts_with(&OLE2_MAGIC)
 }
 
 fn build(patterns: &[String]) -> Result<Option<GlobSet>, globset::Error> {
