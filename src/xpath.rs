@@ -709,6 +709,92 @@ mod tests {
     }
 
     #[test]
+    fn text_node_match_returns_text_kind() {
+        use super::{MatchKind, Query};
+
+        let xml = "<root>hello world</root>";
+        let q = Query::compile("//text()", &[]).unwrap();
+        let matches = q.evaluate_xml(xml).unwrap();
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].kind, MatchKind::Text);
+        assert_eq!(matches[0].value, "hello world");
+        assert_eq!(matches[0].tag, None);
+    }
+
+    #[test]
+    fn text_node_tag_mode_shows_parent_element() {
+        use super::{EvalOptions, MatchKind, Query};
+
+        let xml = r#"<root><a x="1">hello</a></root>"#;
+        let q = Query::compile("//a/text()", &[]).unwrap();
+        let matches = q
+            .evaluate_xml_with(xml, EvalOptions { as_tag: true })
+            .unwrap();
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].kind, MatchKind::Text);
+        assert_eq!(matches[0].value, "hello");
+        assert_eq!(matches[0].tag, Some(r#"<a x="1"/>"#.to_string()));
+    }
+
+    #[test]
+    fn comment_node_match_returns_text_kind() {
+        use super::{MatchKind, Query};
+
+        let xml = "<root><!-- a comment --></root>";
+        let q = Query::compile("//comment()", &[]).unwrap();
+        let matches = q.evaluate_xml(xml).unwrap();
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].kind, MatchKind::Text);
+        assert_eq!(matches[0].value, "a comment");
+        assert_eq!(matches[0].tag, None);
+    }
+
+    #[test]
+    fn processing_instruction_match_returns_text_kind() {
+        use super::{MatchKind, Query};
+
+        let xml = "<root><?foo bar?></root>";
+        let q = Query::compile("//processing-instruction()", &[]).unwrap();
+        let matches = q.evaluate_xml(xml).unwrap();
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].kind, MatchKind::Text);
+        assert_eq!(matches[0].value, "bar");
+        assert_eq!(matches[0].tag, None);
+    }
+
+    #[test]
+    fn root_node_match_returns_element_kind() {
+        use super::{MatchKind, Query};
+
+        let xml = "<root>hello</root>";
+        let q = Query::compile("/", &[]).unwrap();
+        let matches = q.evaluate_xml(xml).unwrap();
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].kind, MatchKind::Element);
+        assert_eq!(matches[0].value, "hello");
+        assert_eq!(matches[0].tag, None);
+    }
+
+    #[test]
+    fn namespace_node_match_returns_atomic_kind() {
+        use super::{MatchKind, Query};
+
+        let xml = r#"<root xmlns:foo="urn:example:ns"/>"#;
+        let q = Query::compile("/*/namespace::*", &[]).unwrap();
+        let matches = q.evaluate_xml(xml).unwrap();
+
+        // The foo binding must appear; the implicit xml binding may also appear.
+        assert!(matches.iter().all(|m| m.kind == MatchKind::Atomic));
+        assert!(matches.iter().all(|m| m.tag.is_none()));
+        assert!(matches.iter().any(|m| m.value == "urn:example:ns"));
+    }
+
+    #[test]
     fn ct_prefix_matches_the_content_types_part() {
         use super::Query;
 
