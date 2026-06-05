@@ -58,7 +58,9 @@ pub struct Cli {
 
     /// Render each element match as a synthetic self-closing opening tag (e.g.
     /// `<c:lineChart val="1"/>`) in the output prefix, alongside its text
-    /// content. No effect on attribute, text, or atomic matches.
+    /// content. For attribute and text matches the tag is the parent element.
+    /// No effect on atomic results from XPath functions like `name()` or
+    /// `count()`.
     #[arg(
         long = "tag",
         conflicts_with_all = ["count", "only_filenames"],
