@@ -1,5 +1,6 @@
 //! Namespace registry + compiled XPath query evaluator.
 
+use sxd_document::dom::{ChildOfElement, ChildOfRoot, Document, Element};
 use sxd_document::parser;
 use sxd_xpath::{nodeset::Node, Context, Factory, Value, XPath};
 use thiserror::Error;
@@ -216,6 +217,7 @@ impl Query {
 
         let pkg = parser::parse(xml).map_err(|e| QueryError::MalformedXml(e.to_string()))?;
         let doc = pkg.as_document();
+        normalize_text_nodes(doc);
 
         let mut ctx = Context::new();
         for (prefix, uri) in self.namespaces.effective() {
@@ -236,6 +238,65 @@ impl Query {
             .map_err(|e| QueryError::InvalidExpression(e.to_string()))?;
 
         Ok(collect_matches(value, opts, &uri_to_prefix))
+    }
+}
+
+/// Merge runs of adjacent sibling text nodes throughout the document.
+///
+/// sxd-document's parser emits a separate text node per character-data token, so every entity
+/// reference splits the surrounding text into multiple sibling text nodes (`A&amp;B` parses as
+/// three). The XPath 1.0 data model requires the opposite — as much character data as possible
+/// grouped into each text node — and the split shape breaks queries in two ways:
+///
+/// - `contains(text(), "X")` silently tests only the first fragment, missing content that follows
+///   an entity reference;
+///
+/// - converting a multi-node nodeset to a string sends sxd-xpath through
+///   `Nodeset::document_order_first`, which rebuilds a document-order index of the *entire*
+///   document on every call, so a `text()`-based predicate over N nodes costs
+///   O(N × document size) — effectively unbounded on large worksheets.
+///
+/// Merging text runs once per document restores the standard data model and keeps such predicates
+/// on the single-node fast path.
+fn normalize_text_nodes(doc: Document<'_>) {
+    let mut stack: Vec<Element<'_>> = doc
+        .root()
+        .children()
+        .into_iter()
+        .filter_map(|c| match c {
+            ChildOfRoot::Element(e) => Some(e),
+            _ => None,
+        })
+        .collect();
+
+    while let Some(element) = stack.pop() {
+        let children = element.children();
+        let mut i = 0;
+        while i < children.len() {
+            let ChildOfElement::Text(first) = children[i] else {
+                if let ChildOfElement::Element(e) = children[i] {
+                    stack.push(e);
+                }
+                i += 1;
+                continue;
+            };
+            // Extend over the run of adjacent text siblings starting at `i`.
+            let mut j = i + 1;
+            while j < children.len() && matches!(children[j], ChildOfElement::Text(_)) {
+                j += 1;
+            }
+            if j > i + 1 {
+                let mut merged = String::from(first.text());
+                for child in &children[i + 1..j] {
+                    if let ChildOfElement::Text(t) = child {
+                        merged.push_str(t.text());
+                        t.remove_from_parent();
+                    }
+                }
+                first.set_text(&merged);
+            }
+            i = j;
+        }
     }
 }
 
@@ -588,6 +649,60 @@ mod tests {
         // "unknown:thing" is a string value, not a name test — no namespace
         // lookup should occur and compilation should succeed.
         assert!(Query::compile(r#"//x:sheet[@name = "unknown:thing"]"#, &[]).is_ok());
+    }
+
+    #[test]
+    fn text_split_by_entity_references_is_merged_into_one_node() {
+        use super::Query;
+
+        // sxd's parser splits `IF(A1=1,&quot;x&quot;,OFFSET(B1,0,0))` into five sibling text
+        // nodes; after normalization `text()` must be a single node holding the whole formula.
+        let xml = r#"<root><f>IF(A1=1,&quot;x&quot;,OFFSET(B1,0,0))</f></root>"#;
+        let q = Query::compile("//f/text()", &[]).unwrap();
+        let values: Vec<String> = q
+            .evaluate_xml(xml)
+            .unwrap()
+            .into_iter()
+            .map(|m| m.value)
+            .collect();
+
+        assert_eq!(values, vec![r#"IF(A1=1,"x",OFFSET(B1,0,0))"#]);
+    }
+
+    #[test]
+    fn contains_text_predicate_sees_content_after_an_entity_reference() {
+        use super::Query;
+
+        let xml = r#"<root><f>IF(A1=1,&quot;x&quot;,OFFSET(B1,0,0))</f><f>SUM(A1:A2)</f></root>"#;
+        let q = Query::compile(r#"//f[contains(text(),"OFFSET(")]"#, &[]).unwrap();
+        let matches = q.evaluate_xml(xml).unwrap();
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].value, r#"IF(A1=1,"x",OFFSET(B1,0,0))"#);
+    }
+
+    #[test]
+    fn normalization_recurses_into_nested_elements() {
+        use super::Query;
+
+        let xml = r#"<root><a><b>x&amp;y</b>p&lt;q</a></root>"#;
+        let q = Query::compile("//b/text()", &[]).unwrap();
+        let b_values: Vec<String> = q
+            .evaluate_xml(xml)
+            .unwrap()
+            .into_iter()
+            .map(|m| m.value)
+            .collect();
+        assert_eq!(b_values, vec!["x&y"]);
+
+        let q = Query::compile("//a/text()", &[]).unwrap();
+        let a_values: Vec<String> = q
+            .evaluate_xml(xml)
+            .unwrap()
+            .into_iter()
+            .map(|m| m.value)
+            .collect();
+        assert_eq!(a_values, vec!["p<q"]);
     }
 
     #[test]
