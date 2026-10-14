@@ -21,6 +21,10 @@ pub const OOXML_DEFAULTS: &[(&str, &str)] = &[
         "c",
         "http://schemas.openxmlformats.org/drawingml/2006/chart",
     ),
+    (
+        "cx",
+        "http://schemas.microsoft.com/office/drawing/2014/chartex",
+    ),
     ("a", "http://schemas.openxmlformats.org/drawingml/2006/main"),
     (
         "xdr",
@@ -833,7 +837,10 @@ mod tests {
 
     #[test]
     fn collapse_whitespace_leading_and_trailing() {
-        assert_eq!(super::collapse_whitespace("\t hello world \n"), "hello world");
+        assert_eq!(
+            super::collapse_whitespace("\t hello world \n"),
+            "hello world"
+        );
     }
 
     #[test]

@@ -23,6 +23,7 @@ Pre-registered prefixes
 | `x`    | `http://schemas.openxmlformats.org/spreadsheetml/2006/main`                 |
 | `r`    | `http://schemas.openxmlformats.org/officeDocument/2006/relationships`       |
 | `c`    | `http://schemas.openxmlformats.org/drawingml/2006/chart`                    |
+| `cx`   | `http://schemas.microsoft.com/office/drawing/2014/chartex`                  |
 | `a`    | `http://schemas.openxmlformats.org/drawingml/2006/main`                     |
 | `xdr`  | `http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing`       |
 | `mc`   | `http://schemas.openxmlformats.org/markup-compatibility/2006`               |
